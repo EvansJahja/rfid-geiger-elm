@@ -1,17 +1,21 @@
 port module Main exposing (..)
 
 import Browser
-import Html exposing (Html, button, div, text)
-import Html.Events exposing (onClick)
+import Html exposing (Html, button, div, input, text)
+import Html.Events exposing (onClick, onInput)
+import Html.Attributes exposing (placeholder, value)
+import SerDe
 
 -- MODEL
 
 type alias Model =
-    { receivedData : String }
+    { receivedData : String 
+    , textToSend : String
+    }
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { receivedData = "No data yet." }
+    ( { receivedData = "No data yet.", textToSend = "" }
     , Cmd.none
     )
 
@@ -19,8 +23,9 @@ init _ =
 
 type Msg
     = RequestPort
-    | ReceiveData String
+    | ReceiveData (List Int)
     | ReceiveSerialStatus (Maybe SerialStatus)
+    | SendDummy
 
 type SerialStatus
     = SerialWaitingForUser
@@ -52,7 +57,9 @@ decodeSerialStatus list =
 
 port requestPort : () -> Cmd msg
 
-port serialData : (String -> msg) -> Sub msg
+port serialSend : (List Int) -> Cmd msg
+
+port serialData : (List Int -> msg) -> Sub msg
 
 port serialStatus: (List String -> msg) -> Sub msg
 
@@ -64,9 +71,25 @@ update msg model =
         RequestPort ->
             ( model, requestPort () )
 
-        ReceiveData data ->
-            ( { model | receivedData = data }, Cmd.none )
+        ReceiveData byteList ->
+            case SerDe.bytesToEnvelope byteList of
+                Ok stringData ->
+                    ( { model | receivedData = Debug.toString stringData }, Cmd.none )
+                
+                Err SerDe.ErrDummyA ->
+                    ( { model | receivedData = "Error: Invalid bytes received" }, Cmd.none )
+                
+                Err SerDe.ErrDummyB ->
+                    ( { model | receivedData = "Error: Other dummy error" }, Cmd.none )
         
+        SendDummy ->
+            let
+                dummyCommand = SerDe.CmdSetRFIDPower 5
+                dummyPacket = SerDe.Command dummyCommand
+                bytesToSend = SerDe.packetToSerial dummyPacket
+            in
+            ( model, serialSend bytesToSend )
+
         ReceiveSerialStatus maybeStatus ->
             case maybeStatus of
                 Just status ->
@@ -85,11 +108,12 @@ update msg model =
                 
                 Nothing ->
                     ( { model | receivedData = "Status: Unknown status received." }, Cmd.none )
+        
 
 -- SUBSCRIPTIONS
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions _ =
     Sub.batch
         [ serialData ReceiveData
         , serialStatus (\rawList ->
@@ -102,7 +126,8 @@ subscriptions model =
 view : Model -> Html Msg
 view model =
     div []
-        [ button [ onClick RequestPort ] [ text "Connect to Serial Port" ]
+        [ div [] [button [ onClick RequestPort ] [ text "Connect to Serial Port" ]]
+        , div [] [button [ onClick SendDummy] [text "Send Dummy Command"]]
         , div [] [ text <| "Received: " ++ model.receivedData ]
         ]
 
