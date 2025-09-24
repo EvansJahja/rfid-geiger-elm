@@ -1,5 +1,5 @@
 {
   "appId": "com.bububebe.rfidgeiger",
   "appName": "RFID Geiger",
-  "webDir": "public"
+  "webDir": "www"
 }

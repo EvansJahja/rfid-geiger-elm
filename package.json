@@ -4,9 +4,20 @@
   "description": "",
   "license": "ISC",
   "author": "",
-  "type": "commonjs",
-  "main": "index.js",
+  "main": "public/main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "webpack --mode production",
+    "dev": "webpack --mode development",
+    "watch": "webpack --watch --mode development",
+    "cap:build": "npm run build && npx cap sync",
+    "cap:dev": "npm run dev && npx cap sync && npx cap run android"
+  },
+  "dependencies": {
+    "capacitor-bluetooth-serial": "file:../capacitor-bluetooth-serial"
+  },
+  "devDependencies": {
+    "copy-webpack-plugin": "^13.0.1",
+    "webpack": "^5.101.3",
+    "webpack-cli": "^6.0.1"
   }
 }

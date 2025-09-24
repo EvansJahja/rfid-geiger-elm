@@ -1,47 +1,57 @@
-// A reference to your Elm app, typically created when the app is initialized.
+import { Capacitor } from '@capacitor/core';
+import { CapacitorBluetoothSerial } from 'capacitor-bluetooth-serial';
+CapacitorBluetoothSerial.echo({ value: "Hello from JS!" }).then(result => {
+    console.log("Echo from Capacitor plugin:", result.value);
+});
+
 const app = Elm.Main.init({ node: document.getElementById('elm-app') });
 
 // Module-level variables to maintain serial port state
 let serialPort = null;
 let serialWriter = null;
 
-
 app.ports.requestPort.subscribe(async function() {
-  
-  try {
-    app.ports.serialStatus.send(["serial_waiting_for_user"]);
-    serialPort = await navigator.serial.requestPort();
-    app.ports.serialStatus.send(["serial_connecting"]);
-    
-    await serialPort.open({ baudRate: 9600 });
-    app.ports.serialStatus.send(["serial_connected"]);
-
-    // Get the writer and store it for later use
-    serialWriter = serialPort.writable.getWriter();
-
-    // Read raw bytes instead of decoded text
-    const reader = serialPort.readable.getReader();
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) {
-        console.log('[readLoop] DONE', done);
-        reader.releaseLock();
-        break;
-      }
-      
-      // Convert Uint8Array to regular array of integers for Elm
-      const byteArray = Array.from(value);
-      console.log("📥 Received bytes:", byteArray);
-      
-      // Send the raw bytes to Elm
-      app.ports.serialData.send(byteArray);
-    }
-  } catch (error) {
-    console.error("🔴 Serial connection error: ", error);
-    app.ports.serialStatus.send(["serial_error", error.message || "Unknown error"]);
-  }
+    CapacitorBluetoothSerial.echo({ value: "Requesting port from JS!" }).then(result => {
+        console.log("Echo from Capacitor plugin:", result.value);
+    });
 });
+
+// app.ports.requestPort.subscribe(async function() {
+
+  // try {
+  //   app.ports.serialStatus.send(["serial_waiting_for_user"]);
+//     serialPort = await navigator.serial.requestPort();
+//     app.ports.serialStatus.send(["serial_connecting"]);
+    
+//     await serialPort.open({ baudRate: 9600 });
+//     app.ports.serialStatus.send(["serial_connected"]);
+
+//     // Get the writer and store it for later use
+//     serialWriter = serialPort.writable.getWriter();
+
+//     // Read raw bytes instead of decoded text
+//     const reader = serialPort.readable.getReader();
+
+//     while (true) {
+//       const { value, done } = await reader.read();
+//       if (done) {
+//         console.log('[readLoop] DONE', done);
+//         reader.releaseLock();
+//         break;
+//       }
+      
+//       // Convert Uint8Array to regular array of integers for Elm
+//       const byteArray = Array.from(value);
+//       console.log("📥 Received bytes:", byteArray);
+      
+//       // Send the raw bytes to Elm
+//       app.ports.serialData.send(byteArray);
+//     }
+//   } catch (error) {
+//     console.error("🔴 Serial connection error: ", error);
+//     app.ports.serialStatus.send(["serial_error", error.message || "Unknown error"]);
+//   }
+// });
 
 app.ports.serialSend.subscribe(async function(byteList) {
     console.log("📤 Sending bytes:", byteList);
