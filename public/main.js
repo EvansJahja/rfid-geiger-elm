@@ -1,8 +1,5 @@
 import { Capacitor } from '@capacitor/core';
 import { CapacitorBluetoothSerial } from 'capacitor-bluetooth-serial';
-CapacitorBluetoothSerial.echo({ value: "Hello from JS!" }).then(result => {
-    console.log("Echo from Capacitor plugin:", result.value);
-});
 
 const app = Elm.Main.init({ node: document.getElementById('elm-app') });
 
@@ -13,6 +10,11 @@ let serialWriter = null;
 app.ports.requestPort.subscribe(async function() {
     CapacitorBluetoothSerial.echo({ value: "Requesting port from JS!" }).then(result => {
         console.log("Echo from Capacitor plugin:", result.value);
+    });
+    CapacitorBluetoothSerial.checkAndRequestBluetoothPermission().then(() => {
+      CapacitorBluetoothSerial.listDevices().then(devices => {
+          console.log("Available Bluetooth devices:", JSON.stringify(devices));
+      })
     });
 });
 
