@@ -6,8 +6,11 @@
   "author": "",
   "main": "public/main.js",
   "scripts": {
-    "build": "webpack --mode production",
-    "dev": "webpack --mode development",
+    "elm:build": "elm make src\\Main.elm --output public\\elm.js",
+    "webpack:build": "webpack --mode production",
+    "webpack:dev": "webpack --mode development",
+    "build": "npm run elm:build && npm run webpack:build",
+    "dev": "npm run elm:build && npm run webpack:dev",
     "watch": "webpack --watch --mode development",
     "cap:build": "npm run build && npx cap sync",
     "cap:dev": "npm run dev && npx cap sync && npx cap run android"

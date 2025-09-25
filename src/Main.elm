@@ -11,11 +11,12 @@ import SerDe
 type alias Model =
     { receivedData : String 
     , textToSend : String
+    , deviceList : List String
     }
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { receivedData = "No data yet.", textToSend = "" }
+    ( { receivedData = "No data yet.", textToSend = "", deviceList = [] }
     , Cmd.none
     )
 
@@ -25,6 +26,7 @@ type Msg
     = RequestPort
     | ReceiveData (List Int)
     | ReceiveSerialStatus (Maybe SerialStatus)
+    | ReceiveDeviceList (List String)
     | SendDummy
 
 type SerialStatus
@@ -63,6 +65,8 @@ port serialData : (List Int -> msg) -> Sub msg
 
 port serialStatus: (List String -> msg) -> Sub msg
 
+port deviceList: (List String -> msg) -> Sub msg
+
 -- UPDATE
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -89,6 +93,8 @@ update msg model =
                 bytesToSend = SerDe.packetToSerial dummyPacket
             in
             ( model, serialSend bytesToSend )
+        ReceiveDeviceList devices ->
+            ( { model | deviceList = devices }, Cmd.none )
 
         ReceiveSerialStatus maybeStatus ->
             case maybeStatus of
@@ -119,6 +125,7 @@ subscriptions _ =
         , serialStatus (\rawList ->
             ReceiveSerialStatus (decodeSerialStatus rawList)
           )
+        , deviceList ReceiveDeviceList
         ]
 
 -- VIEW
@@ -129,6 +136,11 @@ view model =
         [ div [] [button [ onClick RequestPort ] [ text "Connect to Serial Port" ]]
         , div [] [button [ onClick SendDummy] [text "Send Dummy Command"]]
         , div [] [ text <| "Received: " ++ model.receivedData ]
+        -- list of devices as ul
+        , div [] 
+            [ text "Available Bluetooth Devices:"
+            , Html.ul [] (List.map (\device -> Html.li [] [ text device ]) model.deviceList)
+            ]
         ]
 
 -- MAIN

@@ -12,8 +12,9 @@ app.ports.requestPort.subscribe(async function() {
         console.log("Echo from Capacitor plugin:", result.value);
     });
     CapacitorBluetoothSerial.checkAndRequestBluetoothPermission().then(() => {
-      CapacitorBluetoothSerial.listDevices().then(devices => {
+      CapacitorBluetoothSerial.listDevices().then(({devices}) => {
           console.log("Available Bluetooth devices:", JSON.stringify(devices));
+          app.ports.deviceList.send(devices.map(d => d.name));
       })
     });
 });
