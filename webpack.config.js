@@ -28,11 +28,14 @@ module.exports = {
         test: /\.elm$/,
         exclude: [/elm-stuff/, /node_modules/],
         use: [
-          { loader: 'elm-reloader' },
+          { 
+            loader: 'elm-reloader',
+          },
           {
             loader: 'elm-webpack-loader',
             options: {
-              cwd: __dirname
+              cwd: __dirname,
+              debug: false
             }
           }
         ]
