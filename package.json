@@ -7,20 +7,26 @@
   "main": "public/main.js",
   "scripts": {
     "elm:build": "elm make src\\Main.elm --output public\\elm.js",
+    "elm:live": "elm-live src\\Main.elm --no-server -- --output public\\elm.js",
     "webpack:build": "webpack --mode production",
     "webpack:dev": "webpack --mode development",
+    "webpack:serve": "webpack serve",
+    "cap:run": "npx cap run android -l",
     "build": "npm run elm:build && npm run webpack:build",
     "dev": "npm run elm:build && npm run webpack:dev",
     "watch": "webpack --watch --mode development",
     "cap:build": "npm run build && npx cap sync",
-    "cap:dev": "npm run dev && npx cap sync && npx cap run android"
+    "cap:dev": "npm run dev && npx cap sync && npx cap run android",
+    "live": "concurrently \"npm run elm:live\" \"npm run webpack:serve\" \"npm run cap:run\""
   },
   "dependencies": {
     "capacitor-bluetooth-serial": "file:../capacitor-bluetooth-serial"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "copy-webpack-plugin": "^13.0.1",
     "webpack": "^5.101.3",
-    "webpack-cli": "^6.0.1"
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.2"
   }
 }

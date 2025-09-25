@@ -8,9 +8,6 @@ let serialPort = null;
 let serialWriter = null;
 
 app.ports.requestPort.subscribe(async function() {
-    CapacitorBluetoothSerial.echo({ value: "Requesting port from JS!" }).then(result => {
-        console.log("Echo from Capacitor plugin:", result.value);
-    });
     CapacitorBluetoothSerial.checkAndRequestBluetoothPermission().then(() => {
       CapacitorBluetoothSerial.listDevices().then(({devices}) => {
           console.log("Available Bluetooth devices:", JSON.stringify(devices));

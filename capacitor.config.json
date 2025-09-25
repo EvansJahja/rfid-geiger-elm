@@ -1,5 +1,9 @@
 {
   "appId": "com.bububebe.rfidgeiger",
   "appName": "RFID Geiger",
-  "webDir": "www"
+  "webDir": "www",
+  "server": {
+    "url": "http://192.168.100.111:3000",
+    "cleartext": true
+  }
 }

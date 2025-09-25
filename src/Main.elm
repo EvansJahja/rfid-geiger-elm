@@ -1,7 +1,7 @@
 port module Main exposing (..)
 
 import Browser
-import Html exposing (Html, button, div, input, text)
+import Html exposing (Html, button, div, input, text, select, option)
 import Html.Events exposing (onClick, onInput)
 import Html.Attributes exposing (placeholder, value)
 import SerDe
@@ -136,12 +136,22 @@ view model =
         [ div [] [button [ onClick RequestPort ] [ text "Connect to Serial Port" ]]
         , div [] [button [ onClick SendDummy] [text "Send Dummy Command"]]
         , div [] [ text <| "Received: " ++ model.receivedData ]
-        -- list of devices as ul
-        , div [] 
-            [ text "Available Bluetooth Devices:"
-            , Html.ul [] (List.map (\device -> Html.li [] [ text device ]) model.deviceList)
-            ]
+        , htmlIf (List.isEmpty model.deviceList)
+            (Html.text "Nothing yet")
+            (div [] 
+                [ text "Available Bluetooth Devices:"
+                , select []
+                    (List.map (\device -> option [] [ text device ]) model.deviceList)
+                ]
+            )
         ]
+
+htmlIf : Bool -> Html msg -> Html msg -> Html msg
+htmlIf condition htmlTrue htmlFalse  =
+    if condition then
+        htmlTrue
+    else
+        htmlFalse
 
 -- MAIN
 

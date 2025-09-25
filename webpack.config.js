@@ -10,6 +10,9 @@ module.exports = {
     clean: true, // Clean www folder before each build
   },
   devtool: 'source-map', // Enable source maps for debugging
+  devServer: {
+    port: 3000
+  },
   plugins: [
     new CopyWebpackPlugin({
       patterns: [
