@@ -3,22 +3,40 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   mode: process.env.NODE_ENV || 'development',
-  entry: './public/main.js',
+  entry: './src/main.js',
   output: {
     filename: 'bundle.js',
     path: path.resolve(__dirname, 'www'),
-    clean: true, // Clean www folder before each build
+    clean: true,
   },
-  devtool: 'source-map', // Enable source maps for debugging
+  devtool: 'source-map',
   devServer: {
-    port: 3000
+    port: 3000,
+    static: path.join(__dirname, 'www'),
+    hot: true,
   },
   plugins: [
     new CopyWebpackPlugin({
       patterns: [
         { from: 'src-web/index.html', to: 'index.html' },
-        { from: 'public/elm.js', to: 'elm.js', noErrorOnMissing: true },
       ],
     }),
   ],
+  module: {
+    rules: [
+      {
+        test: /\.elm$/,
+        exclude: [/elm-stuff/, /node_modules/],
+        use: [
+          { loader: 'elm-reloader' },
+          {
+            loader: 'elm-webpack-loader',
+            options: {
+              cwd: __dirname
+            }
+          }
+        ]
+      }
+    ]
+  }
 };

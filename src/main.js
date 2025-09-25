@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { CapacitorBluetoothSerial } from 'capacitor-bluetooth-serial';
+import { Elm } from './Main.elm';
 
 const app = Elm.Main.init({ node: document.getElementById('elm-app') });
 
@@ -15,6 +16,7 @@ app.ports.requestPort.subscribe(async function() {
       })
     });
 });
+
 
 // app.ports.requestPort.subscribe(async function() {
 
@@ -75,7 +77,7 @@ app.ports.serialSend.subscribe(async function(byteList) {
         // const echoBytes = Array.from(uint8Array);
         // app.ports.serialData.send(echoBytes);
     } catch (error) {
-        console.error("🔴 Error sending data:", error);
+        console.error("Error sending data:", error);
         app.ports.serialStatus.send(["serial_error", "Send failed: " + error.message]);
     }
 });

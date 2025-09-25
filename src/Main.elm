@@ -12,11 +12,12 @@ type alias Model =
     { receivedData : String 
     , textToSend : String
     , deviceList : List String
+    , counter : Int
     }
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { receivedData = "No data yet.", textToSend = "", deviceList = [] }
+    ( { receivedData = "No data yet.", textToSend = "", deviceList = [], counter = 0 }
     , Cmd.none
     )
 
@@ -28,6 +29,7 @@ type Msg
     | ReceiveSerialStatus (Maybe SerialStatus)
     | ReceiveDeviceList (List String)
     | SendDummy
+    | IncrementCounter
 
 type SerialStatus
     = SerialWaitingForUser
@@ -114,6 +116,8 @@ update msg model =
                 
                 Nothing ->
                     ( { model | receivedData = "Status: Unknown status received." }, Cmd.none )
+        IncrementCounter ->
+            ( { model | counter = model.counter + 1 }, Cmd.none )
         
 
 -- SUBSCRIPTIONS
@@ -135,9 +139,12 @@ view model =
     div []
         [ div [] [button [ onClick RequestPort ] [ text "Connect to Serial Port" ]]
         , div [] [button [ onClick SendDummy] [text "Send Dummy Command"]]
+        , div [] [ input [ placeholder "Enter text..." ] [] ]
         , div [] [ text <| "Received: " ++ model.receivedData ]
+        , div [] [ text <| "Counter: " ++ String.fromInt (model.counter) ]
+        , div [] [button [ onClick IncrementCounter] [text "Increment Counter"]]
         , htmlIf (List.isEmpty model.deviceList)
-            (Html.text "Nothing yet")
+            (Html.text "A2Nothing yet")
             (div [] 
                 [ text "Available Bluetooth Devices:"
                 , select []
