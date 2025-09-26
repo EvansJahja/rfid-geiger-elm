@@ -4,21 +4,38 @@ import Browser
 import Html exposing (Html, button, div, input, text, select, option)
 import Html.Events exposing (onClick, onInput)
 import Html.Attributes exposing (placeholder, value, class)
+import Json.Decode
+import Json.Encode
 import SerDe
+import Html.Attributes exposing (name)
+import Html exposing (Attribute)
+import Html.Attributes exposing (disabled)
+import Device exposing (Device)
+import Device exposing (encodeDevice)
 
 -- MODEL
+
 
 type alias Model =
     { receivedData : String 
     , textToSend : String
-    , deviceList : List String
+    , deviceList : List Device
     , counter : Int
+    , selectedDevice : Maybe Device
     }
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { receivedData = "No data yet.", textToSend = "", deviceList = [], counter = 0 }
-    , Cmd.none
+    ( {
+         receivedData = "No data yet."
+        , textToSend = ""
+        , deviceList = []
+        , counter = 0
+        , selectedDevice = Nothing }
+    , Cmd.batch 
+        [ registerListener ()
+        , requestDeviceList ()
+        ]
     )
 
 -- MESSAGES
@@ -27,9 +44,13 @@ type Msg
     = RequestPort
     | ReceiveData (List Int)
     | ReceiveSerialStatus (Maybe SerialStatus)
-    | ReceiveDeviceList (List String)
+    | ReceiveDeviceList (List Device)
+    | RequestDeviceList
     | SendDummy
     | IncrementCounter
+    | DebugCmd String
+    | DeviceSelected (Maybe Device)
+    | Connect Device
 
 type SerialStatus
     = SerialWaitingForUser
@@ -59,15 +80,22 @@ decodeSerialStatus list =
 
 -- PORTS
 
+port requestDeviceList : () -> Cmd msg
+port debugPort : String -> Cmd msg
+port deviceConnect : (Json.Encode.Value) -> Cmd msg
+port registerListener : () -> Cmd msg
+
 port requestPort : () -> Cmd msg
 
 port serialSend : (List Int) -> Cmd msg
 
+
 port serialData : (List Int -> msg) -> Sub msg
 
-port serialStatus: (List String -> msg) -> Sub msg
+port serialStatus : (List String -> msg) -> Sub msg
 
-port deviceList: (List String -> msg) -> Sub msg
+port deviceList : (Json.Decode.Value -> msg) -> Sub msg
+
 
 -- UPDATE
 
@@ -95,8 +123,18 @@ update msg model =
                 bytesToSend = SerDe.packetToSerial dummyPacket
             in
             ( model, serialSend bytesToSend )
+        RequestDeviceList ->
+            ( model, requestDeviceList () )
         ReceiveDeviceList devices ->
-            ( { model | deviceList = devices }, Cmd.none )
+            let
+                firstDeviceCmd =
+                    case devices of
+                        firstDevice :: _ ->
+                            Just firstDevice
+                        [] ->
+                            Nothing
+            in
+            ( { model | deviceList = devices , selectedDevice = firstDeviceCmd }, Cmd.none )
 
         ReceiveSerialStatus maybeStatus ->
             case maybeStatus of
@@ -118,7 +156,16 @@ update msg model =
                     ( { model | receivedData = "Status: Unknown status received." }, Cmd.none )
         IncrementCounter ->
             ( { model | counter = model.counter + 1 }, Cmd.none )
+
+        DeviceSelected device ->
+            ( { model | selectedDevice = device }, Cmd.none )
+        Connect device ->
+            ( model, Cmd.batch [deviceConnect (encodeDevice device), registerListener ()] )
+        DebugCmd debugMsg ->
+            ( model, debugPort debugMsg )
         
+-- DECODERS
+
 
 -- SUBSCRIPTIONS
 
@@ -129,7 +176,13 @@ subscriptions _ =
         , serialStatus (\rawList ->
             ReceiveSerialStatus (decodeSerialStatus rawList)
           )
-        , deviceList ReceiveDeviceList
+        , deviceList (\json -> 
+            case Json.Decode.decodeValue Device.decodeDeviceList json of
+                Ok devices -> 
+                    ReceiveDeviceList devices
+                Err err ->
+                    Debug.todo "Implement error handling for device list decoding"
+          )
         ]
 
 -- VIEW
@@ -143,14 +196,31 @@ view model =
         , div [] [ text <| "Received: " ++ model.receivedData ]
         , div [] [ text <| "Counter: " ++ String.fromInt (model.counter) ]
         , div [] [button [ onClick IncrementCounter] [text "Increment Counter"]]
+        , div [] [button [ onClick (DebugCmd "GetDeviceList") ] [text "Debug get device list"]]
         , htmlIf (List.isEmpty model.deviceList)
             (Html.h1 [class "text-gray-300 text-3xl font-bold underline"] [ text "No Bluetooth Devices Found" ])
             (div [] 
-                [ text "Available Bluetooth Devices:"
-                , select []
-                    (List.map (\device -> option [] [ text device ]) model.deviceList)
+                [text "Available Bluetooth Devices:"
+                , select [onInput ((Device.deviceByAddr model.deviceList >> DeviceSelected) )]
+                    (List.map (\device -> option [value device.address] [ text device.name ]) model.deviceList)
                 ]
             )
+        , 
+        
+        let
+            attr =
+                disabled (model.selectedDevice == Nothing)
+                    :: (case model.selectedDevice of
+                            Just device ->
+                                [ onClick (Connect device) ]
+
+                            Nothing ->
+                                []
+                    )
+        in
+        div []
+            [ button attr [ text "Connect" ]
+            ]
         ]
 
 htmlIf : Bool -> Html msg -> Html msg -> Html msg

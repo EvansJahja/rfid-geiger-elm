@@ -38,20 +38,21 @@ envelopeToBytes envelope =
     envelope.boot :: envelope.length :: envelope.contents ++ [ envelope.checksum ]
 
 bytesToEnvelope : List Int -> Result SerDeError VH88Envelope
-bytesToEnvelope bytes = Err ErrDummyA
-    -- let
-    -- -- make sure that at least it has a boot code and length
-    --     isValid = 
-    --         case bytes of
-    --             boot :: len :: rest
-    --                 | List.length rest == len ->
-    --                     let
-    --                         expectedLength = len
-    --                         actualLength = List.length rest + 1 -- +1 for checksum
-    --                     in
-    --                     expectedLength == actualLength && isValidByte boot && isValidByte len
-    --             _ ->
-    --                 False
+bytesToEnvelope bytes = 
+    case bytes of
+        boot :: length :: rest ->
+            let
+                contents = List.take (length - 1) rest
+                checksum = List.drop (length - 1) rest |> List.head |> Maybe.withDefault 0
+                calculatedChecksum = calculateChecksum (boot :: length :: contents)
+            in
+            if checksum == calculatedChecksum then
+                Ok (VH88Envelope boot length contents checksum)
+            else
+                Err ErrDummyA
+        _ ->
+            Err ErrDummyB
+
 
     
         

@@ -1,1 +1,27 @@
 @import "tailwindcss";
+
+
+@layer components {
+  button {
+    /* Use @apply to inline existing utility classes */
+    @apply rounded-lg 
+           px-2 py-2 
+           text-gray-200 font-medium 
+           my-1
+           bg-gray-700
+           disabled:bg-gray-400
+           hover:not-disabled:bg-gray-600
+           ;
+  }
+  /* styles for select */
+
+  select {
+    @apply rounded-lg 
+           px-2 py-2 
+           text-gray-200 font-medium 
+           my-1
+           bg-gray-700
+           hover:bg-gray-600
+           ;
+  }
+}
