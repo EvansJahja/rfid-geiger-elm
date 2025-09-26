@@ -17,13 +17,17 @@
     "watch": "webpack --watch --mode development",
     "cap:build": "npm run build && npx cap sync",
     "cap:dev": "npm run dev && npx cap sync && npx cap run android",
-    "live": "concurrently \"npm run webpack:serve\" \"npm run cap:run\""
+    "css:watch": "npx tailwindcss -i src/tailwind.css -o www/tailwind.build.css --watch",
+    "live": "concurrently \"npm run webpack:serve\" \"npm run cap:run\"",
+    "live:web": "concurrently \"npm run webpack:serve\" \"npm run cap:run\" \"npm run css:watch\""
   },
   "dependencies": {
     "capacitor-bluetooth-serial": "file:../capacitor-bluetooth-serial",
-    "elm-webpack-loader": "^8.0.0"
+    "elm-webpack-loader": "^8.0.0",
+    "tailwindcss": "^4.1.13"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.1.13",
     "concurrently": "^9.2.1",
     "copy-webpack-plugin": "^13.0.1",
     "elm-reloader": "^1.1.2",

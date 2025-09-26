@@ -3,7 +3,7 @@ port module Main exposing (..)
 import Browser
 import Html exposing (Html, button, div, input, text, select, option)
 import Html.Events exposing (onClick, onInput)
-import Html.Attributes exposing (placeholder, value)
+import Html.Attributes exposing (placeholder, value, class)
 import SerDe
 
 -- MODEL
@@ -136,7 +136,7 @@ subscriptions _ =
 
 view : Model -> Html Msg
 view model =
-    div []
+    div [class "bg-teal-900 min-h-screen text-white p-4"]
         [ div [] [button [ onClick RequestPort ] [ text "Connect to Serial Port" ]]
         , div [] [button [ onClick SendDummy] [text "Send Dummy Command"]]
         , div [] [ input [ placeholder "Enter text..." ] [] ]
@@ -144,7 +144,7 @@ view model =
         , div [] [ text <| "Counter: " ++ String.fromInt (model.counter) ]
         , div [] [button [ onClick IncrementCounter] [text "Increment Counter"]]
         , htmlIf (List.isEmpty model.deviceList)
-            (Html.text "A2Nothing yet")
+            (Html.h1 [class "text-gray-300 text-3xl font-bold underline"] [ text "No Bluetooth Devices Found" ])
             (div [] 
                 [ text "Available Bluetooth Devices:"
                 , select []
