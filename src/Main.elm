@@ -12,6 +12,7 @@ import Html exposing (Attribute)
 import Html.Attributes exposing (disabled)
 import Device exposing (Device)
 import Device exposing (encodeDevice)
+import Fifo exposing (Fifo)
 
 -- MODEL
 
@@ -22,6 +23,7 @@ type alias Model =
     , deviceList : List Device
     , counter : Int
     , selectedDevice : Maybe Device
+    , recvBuffer : Fifo.Fifo Int
     }
 
 init : () -> ( Model, Cmd Msg )
@@ -31,7 +33,9 @@ init _ =
         , textToSend = ""
         , deviceList = []
         , counter = 0
-        , selectedDevice = Nothing }
+        , selectedDevice = Nothing
+        , recvBuffer = Fifo.empty
+         }
     , Cmd.batch 
         [ registerListener ()
         , requestDeviceList ()
@@ -106,15 +110,22 @@ update msg model =
             ( model, requestPort () )
 
         ReceiveData byteList ->
-            case SerDe.bytesToEnvelope byteList of
-                Ok stringData ->
-                    ( { model | receivedData = Debug.toString stringData }, Cmd.none )
+            let
+                appendedBuffer = List.foldl Fifo.insert model.recvBuffer byteList
+                (resultPacket, remainingBuffer) = SerDe.bytesToEnvelope (appendedBuffer)
+            in
+                ( { model | recvBuffer = remainingBuffer }, Cmd.none )
+            
+            
+            -- case SerDe.bytesToEnvelope byteList of
+            --     Ok stringData ->
+            --         ( { model | receivedData = Debug.toString stringData }, Cmd.none )
                 
-                Err SerDe.ErrDummyA ->
-                    ( { model | receivedData = "Error: Invalid bytes received" }, Cmd.none )
+            --     Err SerDe.ErrDummyA ->
+            --         ( { model | receivedData = "Error: Invalid bytes received" }, Cmd.none )
                 
-                Err SerDe.ErrDummyB ->
-                    ( { model | receivedData = "Error: Other dummy error" }, Cmd.none )
+            --     Err SerDe.ErrDummyB ->
+            --         ( { model | receivedData = "Error: Other dummy error" }, Cmd.none )
         
         SendDummy ->
             let
@@ -164,6 +175,8 @@ update msg model =
         DebugCmd debugMsg ->
             ( model, debugPort debugMsg )
         
+-- FIFO helper
+
 -- DECODERS
 
 

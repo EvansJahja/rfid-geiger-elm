@@ -31,6 +31,7 @@
     "concurrently": "^9.2.1",
     "copy-webpack-plugin": "^13.0.1",
     "elm-reloader": "^1.1.2",
+    "elm-test": "^0.19.1-revision16",
     "webpack": "^5.101.3",
     "webpack-cli": "^6.0.1",
     "webpack-dev-server": "^5.2.2"
