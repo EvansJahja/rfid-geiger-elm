@@ -23,7 +23,7 @@ type alias Model =
     , deviceList : List Device
     , counter : Int
     , selectedDevice : Maybe Device
-    , recvBuffer : Fifo.Fifo Int
+    , recvBuffer : Fifo.Fifo Int -- FIFO for incoming serial data
     }
 
 init : () -> ( Model, Cmd Msg )
@@ -47,6 +47,7 @@ init _ =
 type Msg
     = RequestPort
     | ReceiveData (List Int)
+    | ReceivePacket VH88.VH88Packet
     | ReceiveSerialStatus (Maybe SerialStatus)
     | ReceiveDeviceList (List Device)
     | RequestDeviceList
@@ -63,6 +64,35 @@ type SerialStatus
     | SerialError String
 
 -- HELPER FUNCTIONS
+
+{-| Recursively parse all complete packets from the buffer
+Returns (list of packets, remaining buffer)
+-}
+parseAllPackets : Fifo Int -> List VH88.VH88Packet -> (List VH88.VH88Packet, Fifo Int)
+parseAllPackets buffer accumulator =
+    case VH88.fifoBytesToPacket buffer of
+        (Ok packet, remainingBuffer) ->
+            -- Found a packet, continue parsing
+            parseAllPackets remainingBuffer (packet :: accumulator)
+        
+        (Err _, finalBuffer) ->
+            -- No more complete packets, return what we found (in correct order)
+            (List.reverse accumulator, finalBuffer)
+
+{-| Process all packets by calling update with ReceivePacket for each one
+-}
+processAllPackets : List VH88.VH88Packet -> Model -> (Model, Cmd Msg)
+processAllPackets packets model =
+    case packets of
+        [] ->
+            (model, Cmd.none)
+        
+        packet :: remainingPackets ->
+            let
+                (newModel, cmd) = update (ReceivePacket packet) model
+                (finalModel, finalCmd) = processAllPackets remainingPackets newModel
+            in
+                (finalModel, Cmd.batch [cmd, finalCmd])
 
 decodeSerialStatus : List String -> Maybe SerialStatus
 decodeSerialStatus list =
@@ -112,28 +142,27 @@ update msg model =
         ReceiveData byteList ->
             let
                 appendedBuffer = List.foldl Fifo.insert model.recvBuffer byteList
-                (resultPacket, remainingBuffer) = VH88.bytesToEnvelope (appendedBuffer)
+                (packets, finalBuffer) = parseAllPackets appendedBuffer []
             in
-                ( { model | recvBuffer = remainingBuffer }, Cmd.none )
-            
-            
-            -- case VH88.bytesToEnvelope byteList of
-            --     Ok stringData ->
-            --         ( { model | receivedData = Debug.toString stringData }, Cmd.none )
-                
-            --     Err VH88.ErrDummyA ->
-            --         ( { model | receivedData = "Error: Invalid bytes received" }, Cmd.none )
-                
-            --     Err VH88.ErrDummyB ->
-            --         ( { model | receivedData = "Error: Other dummy error" }, Cmd.none )
+                case packets of
+                    [] ->
+                        -- No complete packets found, keep the buffer unchanged
+                        ( { model | recvBuffer = finalBuffer }, Cmd.none )
+                    
+                    _ ->
+                        -- Process all packets sequentially
+                        processAllPackets packets { model | recvBuffer = finalBuffer }
+
+        ReceivePacket packet ->
+            ( { model | receivedData = "Received valid packet with contents: " ++ (Debug.toString packet) }, Cmd.none )
         
         SendDummy ->
-            let
-                dummyCommand = VH88.CmdSetRFIDPower 5
-                dummyPacket = VH88.Command dummyCommand
-                bytesToSend = VH88.packetToSerial dummyPacket
-            in
-            ( model, serialSend bytesToSend )
+            case VH88.setRfidPower 5 of
+                Ok bytesToSend ->
+                    ( model, serialSend bytesToSend )
+                
+                Err errorMsg ->
+                    ( { model | receivedData = "Command error: " ++ errorMsg }, Cmd.none )
         RequestDeviceList ->
             ( model, requestDeviceList () )
         ReceiveDeviceList devices ->
@@ -175,10 +204,6 @@ update msg model =
         DebugCmd debugMsg ->
             ( model, debugPort debugMsg )
         
--- FIFO helper
-
--- DECODERS
-
 
 -- SUBSCRIPTIONS
 

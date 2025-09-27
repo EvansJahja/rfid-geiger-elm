@@ -1,18 +1,96 @@
-module VH88 exposing (VH88Error(..), VH88Packet(..), fifoBytesToPacket, commandPacketToBytes)
+module VH88 exposing 
+    ( 
+      VH88Error(..), VH88Packet(..), Command(..), ErrorCode(..)
+
+
+    , fifoBytesToPacket, commandPacketToBytes
+
+    , setRfidPower, getDuplicateFilter, setDuplicateFilter
+    , readWorkingParameters, setWorkingParameters
+
+    )
 
 import Fifo exposing (Fifo)
 import Bitwise
 
 
 
+-- COMMAND TYPES
+
+{-| VH-88 Commands with type safety and parameter validation -}
+type Command
+    = SetDuplicateFilter Bool
+    | GetDuplicateFilter  
+    | SetRfidPower Int    -- 0-33 range
+    | ReadWorkingParameters
+    | SetTagFilter { address : Int, length : Int, mask : List Int }
+    | GetTagFilter
+    | SetWorkingParameters (List Int)  -- TODO: Make this more specific
+    | SetBluetoothKeyboardDelay Int
+    | SetFactoryParameters (List Int)
+    | RestoreFactorySettings
+    | SetTime { year : Int, month : Int, day : Int, hour : Int, minute : Int, second : Int }
+    | GetTime
+    | SetRfidInventoryInterval Int
+    | GetRfidInventoryInterval  
+    | SetTidUserInventoryParameters { area : Int, key : Int, address : Int, count : Int }
+    | GetTidUserInventoryParameters Int
+    | GetRfidModuleVersion
+    | SwitchToScanCodeModule
+    | SwitchToRfidModule
+    | RestoreBluetoothFactorySettings
+    | SaveBluetoothParameters
+    | SetReaderId (List Int)  -- 10 bytes
+    | GetReaderId
+    | SetBluetoothName String  -- max 8 bytes
+    | GetBluetoothName
+    | HostComputerCardReading Bool
+    | GetUDiskInventoryFileDirectory
+    | DownloadUDiskInventoryData String
+    | DeleteUDiskInventoryFile String
+    | SaveCurrentInventoryDataToUDisk
+
+{-| Error codes from VH-88 protocol section 1.1.4 -}
+type ErrorCode
+    = Success
+    | AntennaConnectionFailed
+    | NoTagRecognized
+    | LockingTagParameterError
+    | WrongLengthListingTags
+    | CommandLengthError
+    | MinFrequencyGreaterThanMax
+    | FrequencyBandParameterError
+    | PowerSettingFailed
+    | WorkModuleSettingError
+    | OutputModeSettingError
+    | AutoFilterSettingError
+    | TagFilterLengthOutOfRange
+    | CommandParameterError
+    | CurrentModuleNotRFID
+    | HardwareFailedToExecute
+    | PathOpeningFailed
+    | OtherError
+    | FileReadFailed
+    | FilePointerMovementFailed
+    | FileDeletionFailed
+    | FailedToMatchTag
+    | FailedToReadTag
+    | FailedToWriteTag
+    | FrequencySettingFailed
+    | FileNameTooLong
+    | DeviceNotSupported
+    | CommandTimeout
+    | UnknownError Int
+
 -- TYPES
 
 type VH88Error
-    = ErrNotEnough
-    | ErrDummyA
-    | ErrDummyB
-    | Unsupported
-    | IllegalState
+    = InsufficientData
+    | ChecksumMismatch  
+    | IncompletePacket
+    | UnsupportedPacketType
+    | InvalidBootCode
+    | ProtocolError ErrorCode
 
 type VH88Packet
     = Command VH88CommandData
@@ -65,20 +143,20 @@ bytesToEnvelope potentiallyNotBootCodeAlignedFifo =
                     if checksum == calculatedChecksum then
                         ( Ok (VH88Envelope boot length contents checksum), remainingFifo )
                     else
-                        ( Err ErrDummyA, alignedFifo ) -- Return original fifo on error
+                        ( Err ChecksumMismatch, alignedFifo ) -- Return original fifo on error
                 else
-                    ( Err ErrDummyB, alignedFifo ) -- Not enough bytes for a full packet, return original fifo
+                    ( Err IncompletePacket, alignedFifo ) -- Not enough bytes for a full packet, return original fifo
             _ ->
-                ( Err ErrDummyB, alignedFifo ) -- Not enough bytes for even boot and length, return original fifo
+                ( Err InsufficientData, alignedFifo ) -- Not enough bytes for even boot and length, return original fifo
 
 envelopeToPacket : VH88Envelope -> Result VH88Error VH88Packet
 envelopeToPacket envelope =
     case envelope.boot of 
-        0x40 -> Err Unsupported
+        0x40 -> Err UnsupportedPacketType
         0xF0 -> Ok (Response (makeCommandData envelope.contents))
         0xF4 -> Ok (Error (makeCommandData envelope.contents))
         0xF1 -> Ok (Status (makeCommandData envelope.contents))
-        _ -> Err IllegalState
+        _ -> Err InvalidBootCode
 
 makeCommandData : List Int -> VH88CommandData
 makeCommandData contents =
@@ -164,3 +242,94 @@ alignBootCode fifo =
 isValidByte : Int -> Bool
 isValidByte byte =
     byte >= 0 && byte <= 255
+
+
+-- CLEAN COMMAND API
+
+{-| Convert command to bytes for port communication -}
+commandToBytes : Command -> Result String (List Int)
+commandToBytes command =
+    case command of
+        SetRfidPower power ->
+            if power >= 0 && power <= 33 then
+                Ok (commandPacketToBytes 0x04 [power])
+            else
+                Err "RFID power must be between 0 and 33"
+        
+        SetDuplicateFilter enabled ->
+            let filterValue = if enabled then 1 else 0
+            in Ok (commandPacketToBytes 0x02 [filterValue])
+        
+        GetDuplicateFilter ->
+            Ok (commandPacketToBytes 0x03 [])
+            
+        ReadWorkingParameters ->
+            Ok (commandPacketToBytes 0x06 [])
+        
+        SetWorkingParameters params ->
+            Ok (commandPacketToBytes 0x09 params)
+        
+        GetTime ->
+            Ok (commandPacketToBytes 0x12 [])
+            
+        SetTime time ->
+            Ok (commandPacketToBytes 0x11 [time.year, time.month, time.day, time.hour, time.minute, time.second])
+        
+        _ ->
+            Err "Command not yet implemented"
+
+{-| High-level command functions with parameter validation -}
+
+setRfidPower : Int -> Result String (List Int)
+setRfidPower power =
+    commandToBytes (SetRfidPower power)
+
+getDuplicateFilter : Result String (List Int)
+getDuplicateFilter =
+    commandToBytes GetDuplicateFilter
+
+setDuplicateFilter : Bool -> Result String (List Int)
+setDuplicateFilter enabled =
+    commandToBytes (SetDuplicateFilter enabled)
+
+readWorkingParameters : Result String (List Int)
+readWorkingParameters =
+    commandToBytes ReadWorkingParameters
+
+setWorkingParameters : List Int -> Result String (List Int)  
+setWorkingParameters params =
+    commandToBytes (SetWorkingParameters params)
+
+{-| Helper function to convert error codes from protocol to meaningful types -}
+errorCodeFromInt : Int -> ErrorCode
+errorCodeFromInt code =
+    case code of
+        0x00 -> Success
+        0x01 -> AntennaConnectionFailed
+        0x02 -> NoTagRecognized
+        0x06 -> LockingTagParameterError
+        0x07 -> WrongLengthListingTags
+        0x08 -> CommandLengthError
+        0x09 -> MinFrequencyGreaterThanMax
+        0x10 -> FrequencyBandParameterError
+        0x11 -> PowerSettingFailed
+        0x12 -> WorkModuleSettingError
+        0x13 -> OutputModeSettingError
+        0x14 -> AutoFilterSettingError
+        0x15 -> TagFilterLengthOutOfRange
+        0x16 -> CommandParameterError
+        0x17 -> CurrentModuleNotRFID
+        0x18 -> HardwareFailedToExecute
+        0x19 -> PathOpeningFailed
+        0x20 -> OtherError
+        0x21 -> FileReadFailed
+        0x22 -> FilePointerMovementFailed
+        0x23 -> FileDeletionFailed
+        0x24 -> FailedToMatchTag
+        0x25 -> FailedToReadTag
+        0x26 -> FailedToWriteTag
+        0x27 -> FrequencySettingFailed
+        0x28 -> FileNameTooLong
+        0x29 -> DeviceNotSupported
+        0xFF -> CommandTimeout
+        _ -> UnknownError code

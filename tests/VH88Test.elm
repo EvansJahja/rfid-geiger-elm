@@ -3,7 +3,6 @@ module VH88Test exposing (..)
 import Test exposing (..)
 import Expect
 import VH88 
-import VH88.Commands
 import Fifo exposing (Fifo)
 
 suite : Test
@@ -44,12 +43,23 @@ suite =
             ]
         , describe "Test command packets"
             [
-                test "Serialize CmdSetRFIDPower 5" <|
+                test "Serialize SetRFIDPower 5" <|
                     \_ ->
-                    let
-                        commandBytes = VH88.Commands.setRFIDPower 5
-                    in
-                        Expect.equal [0x40, 0x03, 0x04, 0x05, 0xb4] commandBytes
+                    case VH88.setRfidPower 5 of
+                        Ok commandBytes ->
+                            Expect.equal [0x40, 0x03, 0x04, 0x05, 0xb4] commandBytes
+                        
+                        Err _ ->
+                            Expect.fail "Command should succeed"
+                            
+                , test "SetRFIDPower validation - invalid power" <|
+                    \_ ->
+                    case VH88.setRfidPower 50 of
+                        Ok _ ->
+                            Expect.fail "Should reject power > 33"
+                        
+                        Err errorMsg ->
+                            Expect.equal "RFID power must be between 0 and 33" errorMsg
 
             ]
         ]
