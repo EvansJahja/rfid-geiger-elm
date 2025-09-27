@@ -6,7 +6,7 @@ import Html.Events exposing (onClick, onInput)
 import Html.Attributes exposing (placeholder, value, class)
 import Json.Decode
 import Json.Encode
-import SerDe
+import VH88
 import Html.Attributes exposing (name)
 import Html exposing (Attribute)
 import Html.Attributes exposing (disabled)
@@ -112,26 +112,26 @@ update msg model =
         ReceiveData byteList ->
             let
                 appendedBuffer = List.foldl Fifo.insert model.recvBuffer byteList
-                (resultPacket, remainingBuffer) = SerDe.bytesToEnvelope (appendedBuffer)
+                (resultPacket, remainingBuffer) = VH88.bytesToEnvelope (appendedBuffer)
             in
                 ( { model | recvBuffer = remainingBuffer }, Cmd.none )
             
             
-            -- case SerDe.bytesToEnvelope byteList of
+            -- case VH88.bytesToEnvelope byteList of
             --     Ok stringData ->
             --         ( { model | receivedData = Debug.toString stringData }, Cmd.none )
                 
-            --     Err SerDe.ErrDummyA ->
+            --     Err VH88.ErrDummyA ->
             --         ( { model | receivedData = "Error: Invalid bytes received" }, Cmd.none )
                 
-            --     Err SerDe.ErrDummyB ->
+            --     Err VH88.ErrDummyB ->
             --         ( { model | receivedData = "Error: Other dummy error" }, Cmd.none )
         
         SendDummy ->
             let
-                dummyCommand = SerDe.CmdSetRFIDPower 5
-                dummyPacket = SerDe.Command dummyCommand
-                bytesToSend = SerDe.packetToSerial dummyPacket
+                dummyCommand = VH88.CmdSetRFIDPower 5
+                dummyPacket = VH88.Command dummyCommand
+                bytesToSend = VH88.packetToSerial dummyPacket
             in
             ( model, serialSend bytesToSend )
         RequestDeviceList ->

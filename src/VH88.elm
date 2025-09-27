@@ -1,4 +1,4 @@
-module SerDe exposing (SerDeError(..), VH88Packet(..), fifoBytesToPacket, commandPacketToBytes)
+module VH88 exposing (VH88Error(..), VH88Packet(..), fifoBytesToPacket, commandPacketToBytes)
 
 import Fifo exposing (Fifo)
 import Bitwise
@@ -7,7 +7,7 @@ import Bitwise
 
 -- TYPES
 
-type SerDeError
+type VH88Error
     = ErrNotEnough
     | ErrDummyA
     | ErrDummyB
@@ -40,7 +40,7 @@ envelopeToBytes envelope =
 -- -- We use a FIFO to store incoming bytes from the serial port
 -- -- and we return the remaining bytes in the FIFO after extracting a packet
 -- -- or original FIFO if no complete packet is found
-bytesToEnvelope : (Fifo Int) -> (Result SerDeError VH88Envelope, Fifo Int)
+bytesToEnvelope : (Fifo Int) -> (Result VH88Error VH88Envelope, Fifo Int)
 bytesToEnvelope potentiallyNotBootCodeAlignedFifo = 
     let
         alignedFifo = alignBootCode potentiallyNotBootCodeAlignedFifo
@@ -71,7 +71,7 @@ bytesToEnvelope potentiallyNotBootCodeAlignedFifo =
             _ ->
                 ( Err ErrDummyB, alignedFifo ) -- Not enough bytes for even boot and length, return original fifo
 
-envelopeToPacket : VH88Envelope -> Result SerDeError VH88Packet
+envelopeToPacket : VH88Envelope -> Result VH88Error VH88Packet
 envelopeToPacket envelope =
     case envelope.boot of 
         0x40 -> Err Unsupported
@@ -126,7 +126,7 @@ calculateChecksum bytes =
     (List.sum bytes) |> Bitwise.complement |> (+) 1 |> modBy 0x100 
 
 
-fifoBytesToPacket : (Fifo Int) -> (Result SerDeError VH88Packet, Fifo Int)
+fifoBytesToPacket : (Fifo Int) -> (Result VH88Error VH88Packet, Fifo Int)
 fifoBytesToPacket fifo =
     let
         (maybeEnvelope, remainingFifo) = bytesToEnvelope fifo

@@ -1,4 +1,4 @@
-module SerDe.Constants exposing (..)
+module VH88.Constants exposing (..)
 
 -- VH-88 Command Codes from Protocol v1.5 - Section 1.2 Serial Control Commands
 
