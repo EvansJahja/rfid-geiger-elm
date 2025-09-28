@@ -39,6 +39,13 @@ suite =
                     (_, nextFifo) = VH88.fifoBytesToPacket fifo
                 in
                     Expect.equal 0 (List.length (Fifo.toList nextFifo))
+            , test "must discard partial packet even with valid boot code" <|
+                \_ ->
+                let
+                    fifo = Fifo.fromList [0xf0, 0xf0, 0x03, 0x03, 0x00, 0x0a ]
+                    (_, nextFifo) = VH88.fifoBytesToPacket fifo
+                in
+                    Expect.equal 0 (List.length (Fifo.toList nextFifo))
 
             ]
         , describe "Test command packets"

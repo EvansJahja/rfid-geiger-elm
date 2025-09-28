@@ -1,17 +1,21 @@
-module VH88 exposing 
-    ( 
-      VH88Error(..), VH88Packet(..), Command(..), ErrorCode(..)
+module VH88 exposing (..)
+-- module VH88 exposing 
+--     ( 
+--       VH88Error(..), VH88Packet(..), Command(..), ErrorCode(..), CommandByte
+--       , PendingCommand, newPendingCommand, addPendingCommand
 
 
-    , fifoBytesToPacket, commandPacketToBytes
+--     , fifoBytesToPacket, commandPacketToBytes
 
-    , setRfidPower, getDuplicateFilter, setDuplicateFilter
-    , readWorkingParameters, setWorkingParameters
+--     , setRfidPower, getDuplicateFilter, setDuplicateFilter
+--     , readWorkingParameters, setWorkingParameters
 
-    )
+--     )
 
 import Fifo exposing (Fifo)
 import Bitwise
+import Time
+import Dict exposing (Dict)
 
 
 
@@ -80,7 +84,38 @@ type ErrorCode
     | FileNameTooLong
     | DeviceNotSupported
     | CommandTimeout
-    | UnknownError Int
+
+errorCodeToString : ErrorCode -> String
+errorCodeToString code =
+    case code of
+        Success -> "Success"
+        AntennaConnectionFailed -> "Antenna Connection Failed"
+        NoTagRecognized -> "No Tag Recognized"
+        LockingTagParameterError -> "Locking Tag Parameter Error"
+        WrongLengthListingTags -> "Wrong Length Listing Tags"
+        CommandLengthError -> "Command Length Error"
+        MinFrequencyGreaterThanMax -> "Min Frequency Greater Than Max"
+        FrequencyBandParameterError -> "Frequency Band Parameter Error"
+        PowerSettingFailed -> "Power Setting Failed"
+        WorkModuleSettingError -> "Work Module Setting Error"
+        OutputModeSettingError -> "Output Mode Setting Error"
+        AutoFilterSettingError -> "Auto Filter Setting Error"
+        TagFilterLengthOutOfRange -> "Tag Filter Length Out Of Range"
+        CommandParameterError -> "Command Parameter Error"
+        CurrentModuleNotRFID -> "Current Module Not RFID"
+        HardwareFailedToExecute -> "Hardware Failed To Execute"
+        PathOpeningFailed -> "Path Opening Failed"
+        OtherError -> "Other Error"
+        FileReadFailed -> "File Read Failed"
+        FilePointerMovementFailed -> "File Pointer Movement Failed"
+        FileDeletionFailed -> "File Deletion Failed"
+        FailedToMatchTag -> "Failed To Match Tag"
+        FailedToReadTag -> "Failed To Read Tag"
+        FailedToWriteTag -> "Failed To Write Tag"
+        FrequencySettingFailed -> "Frequency Setting Failed"
+        FileNameTooLong -> "File Name Too Long"
+        DeviceNotSupported -> "Device Not Supported"
+        CommandTimeout -> "Command Timeout"
 
 -- TYPES
 
@@ -92,9 +127,9 @@ type VH88Error
     | InvalidBootCode
     | ProtocolError ErrorCode
 
+-- for receiving packets
 type VH88Packet
-    = Command VH88CommandData
-    | Response VH88CommandData
+    = Response VH88CommandData
     | Error VH88CommandData
     | Status VH88CommandData
 
@@ -108,6 +143,41 @@ type alias CommandParamBytes = List Int
 
 type alias VH88Envelope = { boot: Int, length: Int, contents: List Int, checksum: Int }
 
+-- PENDING COMMANDS
+
+type alias PendingCommand = Dict CommandByte PendingCommandItem
+type alias PendingCommandItem =
+    { commandByte: CommandByte
+    , sentTime: Time.Posix
+    }
+newPendingCommand : PendingCommand
+newPendingCommand = Dict.empty
+
+addPendingCommand :  PendingCommand -> Time.Posix -> CommandByte -> PendingCommand
+addPendingCommand dict time cmdByte =
+    Dict.insert cmdByte { commandByte = cmdByte, sentTime = time } dict
+
+removePendingCommand : PendingCommand -> CommandByte -> PendingCommand
+removePendingCommand dict cmdByte =
+    Dict.remove cmdByte dict
+
+-- PENDING ERRORS
+type alias ErrorCommand = Dict CommandByte PendingErrorItem
+type alias PendingErrorItem =
+    { commandByte: CommandByte
+    , sentTime: Time.Posix
+    , errorCode: ErrorCode
+    }
+newErrorCommand : ErrorCommand
+newErrorCommand = Dict.empty
+
+addErrorCommand :  ErrorCommand -> Time.Posix -> CommandByte -> ErrorCode -> ErrorCommand
+addErrorCommand dict time cmdByte errCode =
+    Dict.insert cmdByte { commandByte = cmdByte, sentTime = time, errorCode = errCode } dict
+
+removeErrorCommand : ErrorCommand -> CommandByte -> ErrorCommand
+removeErrorCommand dict cmdByte =
+    Dict.remove cmdByte dict
 
 -- ENVELOPES
 envelopeToBytes : VH88Envelope -> List Int
@@ -132,7 +202,7 @@ bytesToEnvelope potentiallyNotBootCodeAlignedFifo =
                     totalLength = length + 2 -- +2 for boot and length bytes
                     maybePacketBytes = List.take totalLength bytes
                 in
-                if List.length maybePacketBytes == totalLength then
+                if Debug.log "List length" (List.length maybePacketBytes) == Debug.log "total Length" totalLength then
                     let
                         contents = List.drop 2 maybePacketBytes |> List.take (length - 1)
                         checksum = List.drop (totalLength - 1) maybePacketBytes |> List.head |> Maybe.withDefault 0
@@ -143,7 +213,7 @@ bytesToEnvelope potentiallyNotBootCodeAlignedFifo =
                     if checksum == calculatedChecksum then
                         ( Ok (VH88Envelope boot length contents checksum), remainingFifo )
                     else
-                        ( Err ChecksumMismatch, alignedFifo ) -- Return original fifo on error
+                        ( Err ChecksumMismatch, remainingFifo ) -- Return next fifo so we're not stuck
                 else
                     ( Err IncompletePacket, alignedFifo ) -- Not enough bytes for a full packet, return original fifo
             _ ->
@@ -164,14 +234,6 @@ makeCommandData contents =
     , params = List.drop 1 contents
     }
 
--- PACKETS
-
-
-packetToSerial : VH88Packet -> List Int
-packetToSerial packet =
-    case packet of
-        Command cmd -> commandToSerial cmd
-        _ -> Debug.todo "Implement packetToSerial for Response and Error"
 
 
 commandToSerial : VH88CommandData -> List Int
@@ -252,7 +314,7 @@ commandToBytes command =
     case command of
         SetRfidPower power ->
             if power >= 0 && power <= 33 then
-                Ok (commandPacketToBytes 0x04 [power])
+                Ok (commandPacketToBytes cmdSetRFIDPower [power])
             else
                 Err "RFID power must be between 0 and 33"
         
@@ -332,4 +394,8 @@ errorCodeFromInt code =
         0x28 -> FileNameTooLong
         0x29 -> DeviceNotSupported
         0xFF -> CommandTimeout
-        _ -> UnknownError code
+        _ -> OtherError
+
+-- COMMAND BYTES
+cmdSetRFIDPower : CommandByte
+cmdSetRFIDPower = 0x04

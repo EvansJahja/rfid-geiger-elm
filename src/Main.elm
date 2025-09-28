@@ -1,7 +1,7 @@
 port module Main exposing (..)
 
 import Browser
-import Html exposing (Html, button, div, input, text, select, option)
+import Html exposing (Html, button, div, input, text, select, option, h1)
 import Html.Events exposing (onClick, onInput)
 import Html.Attributes exposing (placeholder, value, class)
 import Json.Decode
@@ -13,32 +13,45 @@ import Html.Attributes exposing (disabled)
 import Device exposing (Device)
 import Device exposing (encodeDevice)
 import Fifo exposing (Fifo)
+import Html exposing (p)
+import Html exposing (ul)
+import Time
+import Task
+import Dict exposing (Dict)
+import Dict exposing (diff)
 
 -- MODEL
 
 
 type alias Model =
-    { receivedData : String 
+    { time : Time.Posix
+    , receivedData : String
     , textToSend : String
     , deviceList : List Device
     , counter : Int
     , selectedDevice : Maybe Device
     , recvBuffer : Fifo.Fifo Int -- FIFO for incoming serial data
+    , pendingCommand: VH88.PendingCommand
+    , errorCommand : VH88.ErrorCommand
     }
+
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( {
-         receivedData = "No data yet."
+    (   { time = Time.millisToPosix 0
+        , receivedData = "No data yet."
         , textToSend = ""
         , deviceList = []
         , counter = 0
         , selectedDevice = Nothing
         , recvBuffer = Fifo.empty
+        , pendingCommand = VH88.newPendingCommand
+        , errorCommand = VH88.newErrorCommand
          }
     , Cmd.batch 
         [ registerListener ()
         , requestDeviceList ()
+        , Time.now |> Task.perform Tick
         ]
     )
 
@@ -56,6 +69,7 @@ type Msg
     | DebugCmd String
     | DeviceSelected (Maybe Device)
     | Connect Device
+    | Tick Time.Posix
 
 type SerialStatus
     = SerialWaitingForUser
@@ -123,7 +137,6 @@ port requestPort : () -> Cmd msg
 
 port serialSend : (List Int) -> Cmd msg
 
-
 port serialData : (List Int -> msg) -> Sub msg
 
 port serialStatus : (List String -> msg) -> Sub msg
@@ -154,12 +167,35 @@ update msg model =
                         processAllPackets packets { model | recvBuffer = finalBuffer }
 
         ReceivePacket packet ->
-            ( { model | receivedData = "Received valid packet with contents: " ++ (Debug.toString packet) }, Cmd.none )
+            let
+                updatedModel = case packet of
+                    VH88.Response commandData ->
+                        { model 
+                        | pendingCommand = VH88.removePendingCommand model.pendingCommand commandData.command 
+                        , errorCommand = VH88.removeErrorCommand model.errorCommand commandData.command -- remove from error as well
+                        }
+                    
+                    VH88.Error commandData ->
+                        let
+                            errorCode = List.head commandData.params |> Maybe.withDefault 0x20 |> VH88.errorCodeFromInt
+                        in
+                            { model 
+                            | pendingCommand = VH88.removePendingCommand model.pendingCommand commandData.command 
+                            , errorCommand = VH88.addErrorCommand model.errorCommand model.time commandData.command errorCode
+                            }
+
+                    VH88.Status _ ->
+                        model  -- Don't remove pending commands for status packets
+            in
+                ( { updatedModel | receivedData = "Received valid packet with contents: " ++ (Debug.toString packet) }, Cmd.none )
         
         SendDummy ->
             case VH88.setRfidPower 5 of
                 Ok bytesToSend ->
-                    ( model, serialSend bytesToSend )
+                    let 
+                        pendingCommand = addPendingCommand model VH88.cmdSetRFIDPower 
+                    in
+                        ( { model | pendingCommand = pendingCommand }, serialSend bytesToSend )
                 
                 Err errorMsg ->
                     ( { model | receivedData = "Command error: " ++ errorMsg }, Cmd.none )
@@ -202,7 +238,13 @@ update msg model =
         Connect device ->
             ( model, Cmd.batch [deviceConnect (encodeDevice device), registerListener ()] )
         DebugCmd debugMsg ->
-            ( model, debugPort debugMsg )
+            (model, debugPort debugMsg)
+        Tick newTime ->
+            ( { model | time = newTime }, Cmd.none)
+
+addPendingCommand : Model -> VH88.CommandByte -> VH88.PendingCommand
+addPendingCommand model cmdByte =
+    VH88.addPendingCommand model.pendingCommand model.time cmdByte
         
 
 -- SUBSCRIPTIONS
@@ -210,7 +252,8 @@ update msg model =
 subscriptions : Model -> Sub Msg
 subscriptions _ =
     Sub.batch
-        [ serialData ReceiveData
+        [ Time.every 500 Tick
+        , serialData ReceiveData
         , serialStatus (\rawList ->
             ReceiveSerialStatus (decodeSerialStatus rawList)
           )
@@ -227,14 +270,14 @@ subscriptions _ =
 
 view : Model -> Html Msg
 view model =
-    div [class "bg-teal-900 min-h-screen text-white p-4"]
+    div [class "bg-teal-900 flex flex-col min-h-screen text-white p-4"]
         [ div [] [button [ onClick RequestPort ] [ text "Connect to Serial Port" ]]
         , div [] [button [ onClick SendDummy] [text "Send Dummy Command"]]
         , div [] [ input [ placeholder "Enter text..." ] [] ]
         , div [] [ text <| "Received: " ++ model.receivedData ]
         , div [] [ text <| "Counter: " ++ String.fromInt (model.counter) ]
         , div [] [button [ onClick IncrementCounter] [text "Increment Counter"]]
-        , div [] [button [ onClick (DebugCmd "GetDeviceList") ] [text "Debug get device list"]]
+        , viewDebugCmd model
         , htmlIf (List.isEmpty model.deviceList)
             (Html.h1 [class "text-gray-300 text-3xl font-bold underline"] [ text "No Bluetooth Devices Found" ])
             (div [] 
@@ -268,6 +311,68 @@ htmlIf condition htmlTrue htmlFalse  =
     else
         htmlFalse
 
+viewDebugCmd : Model -> Html Msg
+viewDebugCmd model =
+    div [] 
+    [ div [ class "my-4 p-4 border border-gray-500 rounded-xl bg-teal-800" ] 
+        [ h1 [] [ text "Debug Commands" ]
+        , div [ class "flex flex-col gap-2 " ]
+            [ button [ onClick (ReceiveDeviceList [Device "Device A" "00:00:00:00:00:01", Device "Device B" "00:00:00:00:00:02"]) ] [text "Debug get device list"]
+            , button [ onClick (ReceiveData [0xf0, 0x03, 0x04, 0x00, 0x09] ) ] [text "Receive successful cmd 0x4"]
+            , button [ onClick (ReceiveData [0xf4, 0x03, 0x04, 0x11, 0xf4] ) ] [text "Receive error cmd 0x4"]
+            , button [ onClick (SendDummy ) ] [text "Send "]
+            ]
+        ]
+    , div [ class "my-4 p-4 border border-gray-500 rounded-xl bg-teal-800" ]
+        [ h1 [] [ text "Debug Info" ]
+        , div [ class "flex flex-col gap-2" ]
+            [ p [] [ text "TODO" ]
+            , viewPendingCommands model
+            , viewErrorCommands model
+            , ul [] (model.recvBuffer |> Fifo.toList |> List.map (\b -> Html.li [] [ text (String.fromInt b) ]))
+              
+            ]
+
+
+        ]
+    ]
+
+viewPendingCommands : Model -> Html Msg
+viewPendingCommands model =
+    div []
+        [ h1 [] [ text "Pending Commands" ]
+        , ul []
+            (Dict.values model.pendingCommand
+                |> List.map
+                    (\cmd ->
+                        Html.li [] [ text ("Command Byte: " ++ String.fromInt cmd.commandByte ++ ", Pending for: " ++ humanTimeDifference cmd.sentTime model.time) ]
+                    )
+            )
+        ]
+
+viewErrorCommands : Model -> Html Msg
+viewErrorCommands model =
+    div []
+        [ h1 [] [ text "Error Commands" ]
+        , ul []
+            (Dict.values model.errorCommand
+                |> List.map
+                    (\cmd ->
+                        Html.li [] [ text ("Command Byte: " ++ String.fromInt cmd.commandByte ++ ", Error code: " ++ VH88.errorCodeToString cmd.errorCode ++ ", Error at: " ++ humanTimeDifference cmd.sentTime model.time ++ " ago" )]
+                    )
+            )
+        ]
+
+humanTimeDifference : Time.Posix -> Time.Posix -> String
+humanTimeDifference earlier later =
+    let
+        diffMillis = Time.posixToMillis later - Time.posixToMillis earlier
+        inSeconds = Time.millisToPosix diffMillis |> Time.toSecond Time.utc
+
+        diffSecondsStr = String.fromInt inSeconds ++ "s"
+    in
+        diffSecondsStr
+    
 -- MAIN
 
 main : Program () Model Msg
