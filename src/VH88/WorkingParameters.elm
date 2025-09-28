@@ -14,7 +14,8 @@ type alias WorkingParameters =
         realTimeOutput : RealTimeOutput,
         minimumCarrierFrequency : Int,
         maximumCarrierFrequency : Int,
-        transmitPower : PowerLevel
+        transmitPower : PowerLevel,
+        hwVersion : Int
     }
 toEncoder : WorkingParameters -> Encode.Encoder
 toEncoder workingParameters =
@@ -27,6 +28,7 @@ toEncoder workingParameters =
         , Encode.unsignedInt8 workingParameters.minimumCarrierFrequency
         , Encode.unsignedInt8 workingParameters.maximumCarrierFrequency
         , powerLevelToEncoder workingParameters.transmitPower
+        , Encode.unsignedInt32 Bytes.BE workingParameters.hwVersion
 
         ]
     

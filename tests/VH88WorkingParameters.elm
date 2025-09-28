@@ -31,6 +31,7 @@ suite =
                         , minimumCarrierFrequency = 7
                         , maximumCarrierFrequency = 59
                         , transmitPower = VH88.powerLevel 4 |> mustResult
+                        , hwVersion = 0x00060109
                         }
                     encoded = Bytes.Encode.encode (VH88.WorkingParameters.toEncoder workingParameter)
                     asList = BytesHelper.decodeIntList encoded
