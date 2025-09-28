@@ -32,6 +32,15 @@ suite =
                         , maximumCarrierFrequency = 59
                         , transmitPower = VH88.powerLevel 4 |> mustResult
                         , hwVersion = 0x00060109
+                        , moduleType = US_R2000
+                        , deviceType = VH88
+                        , filterDuplicateTags = NoFilter
+                        , language = English
+                        , workingMode = RFID
+                        , dataOutputMode = Data
+                        , readerVolume = Mute
+                        , readingMode = Single
+                        , reserved = defaultReserved
                         }
                     encoded = Bytes.Encode.encode (VH88.WorkingParameters.toEncoder workingParameter)
                     asList = BytesHelper.decodeIntList encoded
