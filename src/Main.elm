@@ -3,13 +3,11 @@ port module Main exposing (..)
 import Browser
 import Html exposing (Html, button, div, input, text, select, option, h1)
 import Html.Events exposing (onClick, onInput)
-import Html.Attributes exposing (placeholder, value, class)
+import Html.Attributes exposing (..)
+import Html.Attributes as Attrs
 import Json.Decode
 import Json.Encode
 import VH88
-import Html.Attributes exposing (name)
-import Html exposing (Attribute)
-import Html.Attributes exposing (disabled)
 import Device exposing (Device)
 import Device exposing (encodeDevice)
 import Fifo exposing (Fifo)
@@ -19,9 +17,14 @@ import Time
 import Task
 import Dict exposing (Dict)
 import Dict exposing (diff)
+import Html exposing (label)
+import Html.Events exposing (onCheck)
+import Html.Events exposing (onMouseUp)
+import Html.Events exposing (onBlur)
+import Html.Events exposing (on)
+import Json.Decode as Decode
 
 -- MODEL
-
 
 type alias Model =
     { time : Time.Posix
@@ -33,6 +36,8 @@ type alias Model =
     , recvBuffer : Fifo.Fifo Int -- FIFO for incoming serial data
     , pendingCommand: VH88.PendingCommand
     , errorCommand : VH88.ErrorCommand
+    , showDebug : Bool
+    , powerLevel : Int
     }
 
 
@@ -47,6 +52,8 @@ init _ =
         , recvBuffer = Fifo.empty
         , pendingCommand = VH88.newPendingCommand
         , errorCommand = VH88.newErrorCommand
+        , showDebug = False
+        , powerLevel = 0
          }
     , Cmd.batch 
         [ registerListener ()
@@ -65,11 +72,14 @@ type Msg
     | ReceiveDeviceList (List Device)
     | RequestDeviceList
     | SendDummy
+    | SendCommand VH88.Command 
     | IncrementCounter
     | DebugCmd String
+    | DebugToggle Bool
     | DeviceSelected (Maybe Device)
     | Connect Device
     | Tick Time.Posix
+    | SetPowerLevel Int
 
 type SerialStatus
     = SerialWaitingForUser
@@ -239,8 +249,27 @@ update msg model =
             ( model, Cmd.batch [deviceConnect (encodeDevice device), registerListener ()] )
         DebugCmd debugMsg ->
             (model, debugPort debugMsg)
+        DebugToggle isChecked ->
+            ( { model | showDebug = isChecked }, Cmd.none )
         Tick newTime ->
             ( { model | time = newTime }, Cmd.none)
+        SendCommand command ->
+            case command of 
+                VH88.SetRfidPower powerLevel ->
+                    case VH88.commandToBytes command of
+                        Ok cmdBytes ->
+                            let
+                                pendingCommand = addPendingCommand model VH88.cmdSetRFIDPower
+                            in
+                                ( { model | pendingCommand = pendingCommand, powerLevel = powerLevel }, serialSend cmdBytes )
+                
+                        Err errorMsg ->
+                            ( { model | receivedData = "Command error: " ++ errorMsg }, Cmd.none )
+                _ -> Debug.todo "Implement other commands as needed"
+        SetPowerLevel powerLevel ->
+            ( { model | powerLevel = powerLevel }, Cmd.none )
+
+                
 
 addPendingCommand : Model -> VH88.CommandByte -> VH88.PendingCommand
 addPendingCommand model cmdByte =
@@ -277,17 +306,23 @@ view model =
         , div [] [ text <| "Received: " ++ model.receivedData ]
         , div [] [ text <| "Counter: " ++ String.fromInt (model.counter) ]
         , div [] [button [ onClick IncrementCounter] [text "Increment Counter"]]
-        , viewDebugCmd model
-        , htmlIf (List.isEmpty model.deviceList)
-            (Html.h1 [class "text-gray-300 text-3xl font-bold underline"] [ text "No Bluetooth Devices Found" ])
-            (div [] 
-                [text "Available Bluetooth Devices:"
-                , select [onInput ((Device.deviceByAddr model.deviceList >> DeviceSelected) )]
-                    (List.map (\device -> option [value device.address] [ text device.name ]) model.deviceList)
-                ]
-            )
-        , 
-        
+        , div []
+            [ input [ id "debug-checkbox", type_ "checkbox", onCheck (DebugToggle), class "w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"] []
+            , label [ for "debug-checkbox", class "ms-2 text-sm font-medium text-gray-900 dark:text-gray-300"] [ text "Enable Debugging" ]]
+        , htmlIf model.showDebug (viewDebugCmd model) (div [][])
+        , viewPanelConnection model
+        , viewPanelRfidPower model
+        ]
+
+viewPanel : String -> (List (Html msg)) -> Html msg
+viewPanel title contents = 
+    div [class "my-4 p-4 border border-gray-500 rounded-xl bg-teal-800"]
+    [ h1 [] [text title]
+    , div [class "flex flex-col gap-2"] contents
+    ]
+
+viewPanelConnection : Model -> Html Msg
+viewPanelConnection model =
         let
             attr =
                 disabled (model.selectedDevice == Nothing)
@@ -299,10 +334,23 @@ view model =
                                 []
                     )
         in
-        div []
-            [ button attr [ text "Connect" ]
+            viewPanel "Connection"
+            [ htmlIf (List.isEmpty model.deviceList)
+                            (Html.h1 [class "text-gray-300 text-3xl font-bold underline"] [ text "No Bluetooth Devices Found" ])
+                            (div [] 
+                                [text "Available Bluetooth Devices:"
+                                , select [onInput ((Device.deviceByAddr model.deviceList >> DeviceSelected) )]
+                                    (List.map (\device -> option [value device.address] [ text device.name ]) model.deviceList)
+                                ]
+                            )
+            , button attr [ text "Connect" ]
             ]
-        ]
+viewPanelRfidPower : Model -> Html Msg
+viewPanelRfidPower model =
+    viewPanel ("Power level: " ++ (String.fromInt model.powerLevel))
+    [ input [type_ "range", Attrs.min "0", Attrs.max "33", Attrs.value (String.fromInt model.powerLevel), on "pointerup" (Decode.succeed (SendCommand (VH88.SetRfidPower model.powerLevel))), onInput (SetPowerLevel << Maybe.withDefault 0 << String.toInt)] []
+
+    ]
 
 htmlIf : Bool -> Html msg -> Html msg -> Html msg
 htmlIf condition htmlTrue htmlFalse  =
@@ -314,26 +362,16 @@ htmlIf condition htmlTrue htmlFalse  =
 viewDebugCmd : Model -> Html Msg
 viewDebugCmd model =
     div [] 
-    [ div [ class "my-4 p-4 border border-gray-500 rounded-xl bg-teal-800" ] 
-        [ h1 [] [ text "Debug Commands" ]
-        , div [ class "flex flex-col gap-2 " ]
-            [ button [ onClick (ReceiveDeviceList [Device "Device A" "00:00:00:00:00:01", Device "Device B" "00:00:00:00:00:02"]) ] [text "Debug get device list"]
-            , button [ onClick (ReceiveData [0xf0, 0x03, 0x04, 0x00, 0x09] ) ] [text "Receive successful cmd 0x4"]
-            , button [ onClick (ReceiveData [0xf4, 0x03, 0x04, 0x11, 0xf4] ) ] [text "Receive error cmd 0x4"]
-            , button [ onClick (SendDummy ) ] [text "Send "]
-            ]
+    [ viewPanel "Debug Commands"
+        [ button [ onClick (ReceiveDeviceList [Device "Device A" "00:00:00:00:00:01", Device "Device B" "00:00:00:00:00:02"]) ] [text "Debug get device list"]
+        , button [ onClick (ReceiveData [0xf0, 0x03, 0x04, 0x00, 0x09] ) ] [text "Receive successful cmd 0x4"]
+        , button [ onClick (ReceiveData [0xf4, 0x03, 0x04, 0x11, 0xf4] ) ] [text "Receive error cmd 0x4"]
+        , button [ onClick (SendDummy ) ] [text "Send "]
         ]
-    , div [ class "my-4 p-4 border border-gray-500 rounded-xl bg-teal-800" ]
-        [ h1 [] [ text "Debug Info" ]
-        , div [ class "flex flex-col gap-2" ]
-            [ p [] [ text "TODO" ]
-            , viewPendingCommands model
-            , viewErrorCommands model
-            , ul [] (model.recvBuffer |> Fifo.toList |> List.map (\b -> Html.li [] [ text (String.fromInt b) ]))
-              
-            ]
-
-
+    , viewPanel "Debug Info"
+        [ viewPendingCommands model
+        , viewErrorCommands model
+        , ul [] (model.recvBuffer |> Fifo.toList |> List.map (\b -> Html.li [] [ text (String.fromInt b) ]))
         ]
     ]
 

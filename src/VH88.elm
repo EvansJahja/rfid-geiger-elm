@@ -309,7 +309,7 @@ isValidByte byte =
 -- CLEAN COMMAND API
 
 {-| Convert command to bytes for port communication -}
-commandToBytes : Command -> Result String (List Int)
+commandToBytes : Command -> CommandResult
 commandToBytes command =
     case command of
         SetRfidPower power ->
@@ -341,24 +341,25 @@ commandToBytes command =
             Err "Command not yet implemented"
 
 {-| High-level command functions with parameter validation -}
+type alias CommandResult = Result String (List Int)
 
-setRfidPower : Int -> Result String (List Int)
+setRfidPower : Int -> CommandResult
 setRfidPower power =
     commandToBytes (SetRfidPower power)
 
-getDuplicateFilter : Result String (List Int)
+getDuplicateFilter : CommandResult
 getDuplicateFilter =
     commandToBytes GetDuplicateFilter
 
-setDuplicateFilter : Bool -> Result String (List Int)
+setDuplicateFilter : Bool -> CommandResult
 setDuplicateFilter enabled =
     commandToBytes (SetDuplicateFilter enabled)
 
-readWorkingParameters : Result String (List Int)
+readWorkingParameters : CommandResult
 readWorkingParameters =
     commandToBytes ReadWorkingParameters
 
-setWorkingParameters : List Int -> Result String (List Int)  
+setWorkingParameters : List Int -> CommandResult
 setWorkingParameters params =
     commandToBytes (SetWorkingParameters params)
 
