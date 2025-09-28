@@ -1,22 +1,55 @@
-module VH88 exposing (..)
--- module VH88 exposing 
---     ( 
---       VH88Error(..), VH88Packet(..), Command(..), ErrorCode(..), CommandByte
---       , PendingCommand, newPendingCommand, addPendingCommand
-
-
---     , fifoBytesToPacket, commandPacketToBytes
-
---     , setRfidPower, getDuplicateFilter, setDuplicateFilter
---     , readWorkingParameters, setWorkingParameters
-
---     )
+module VH88 exposing 
+    ( -- Core Types
+      Command(..)           -- expose constructors for pattern matching in commands  
+    , PowerLevel            -- opaque type
+    , Packet(..)            -- expose constructors for pattern matching responses
+    , Error(..)             -- expose constructors for error handling  
+    , ErrorCode(..)         -- expose constructors for error codes
+    
+    -- Smart Constructors
+    , powerLevel            -- Int -> Result String PowerLevel
+    , minPower, maxPower    -- PowerLevel constants
+    
+    -- Core Operations  
+    , commandToBytes        -- Command -> Result String (List Int)
+    , fifoBytesToPacket     -- Fifo Int -> (Result Error Packet, Fifo Int)
+    
+    -- Utilities
+    , errorCodeFromInt      -- Int -> ErrorCode
+    , errorCodeToString     -- ErrorCode -> String
+    
+    -- Command byte constants (needed by Main.elm for pending command tracking)
+    , cmdSetRFIDPower       -- Int
+    )
 
 import Fifo exposing (Fifo)
 import Bitwise
-import Time
-import Dict exposing (Dict)
 
+
+-- POWER LEVEL TYPE
+
+{-| Opaque type for RFID power level with validation -}
+type PowerLevel = PowerLevel Int
+
+{-| Smart constructor for power level with validation -}
+powerLevel : Int -> Result String PowerLevel
+powerLevel level =
+    if level >= 0 && level <= 33 then
+        Ok (PowerLevel level)
+    else
+        Err ("Power level must be between 0 and 33, got " ++ String.fromInt level)
+
+{-| Minimum power level (0) -}
+minPower : PowerLevel
+minPower = PowerLevel 0
+
+{-| Maximum power level (33) -}
+maxPower : PowerLevel
+maxPower = PowerLevel 33
+
+{-| Extract the integer value from PowerLevel (for internal use) -}
+powerLevelToInt : PowerLevel -> Int
+powerLevelToInt (PowerLevel level) = level
 
 
 -- COMMAND TYPES
@@ -25,7 +58,7 @@ import Dict exposing (Dict)
 type Command
     = SetDuplicateFilter Bool
     | GetDuplicateFilter  
-    | SetRfidPower Int    -- 0-33 range
+    | SetRfidPower PowerLevel
     | ReadWorkingParameters
     | SetTagFilter { address : Int, length : Int, mask : List Int }
     | GetTagFilter
@@ -119,7 +152,7 @@ errorCodeToString code =
 
 -- TYPES
 
-type VH88Error
+type Error
     = InsufficientData
     | ChecksumMismatch  
     | IncompletePacket
@@ -128,59 +161,18 @@ type VH88Error
     | ProtocolError ErrorCode
 
 -- for receiving packets
-type VH88Packet
-    = Response VH88CommandData
-    | Error VH88CommandData
-    | Status VH88CommandData
+type Packet
+    = Response CommandData
+    | Error CommandData
+    | Status CommandData
 
 
-type alias VH88CommandData = {command: Int, params: List Int}
+type alias CommandData = {command: Int, params: List Int}
 
-type alias CommandByte = Int
-
-type alias CommandParamBytes = List Int
-
-
-type alias VH88Envelope = { boot: Int, length: Int, contents: List Int, checksum: Int }
-
--- PENDING COMMANDS
-
-type alias PendingCommand = Dict CommandByte PendingCommandItem
-type alias PendingCommandItem =
-    { commandByte: CommandByte
-    , sentTime: Time.Posix
-    }
-newPendingCommand : PendingCommand
-newPendingCommand = Dict.empty
-
-addPendingCommand :  PendingCommand -> Time.Posix -> CommandByte -> PendingCommand
-addPendingCommand dict time cmdByte =
-    Dict.insert cmdByte { commandByte = cmdByte, sentTime = time } dict
-
-removePendingCommand : PendingCommand -> CommandByte -> PendingCommand
-removePendingCommand dict cmdByte =
-    Dict.remove cmdByte dict
-
--- PENDING ERRORS
-type alias ErrorCommand = Dict CommandByte PendingErrorItem
-type alias PendingErrorItem =
-    { commandByte: CommandByte
-    , sentTime: Time.Posix
-    , errorCode: ErrorCode
-    }
-newErrorCommand : ErrorCommand
-newErrorCommand = Dict.empty
-
-addErrorCommand :  ErrorCommand -> Time.Posix -> CommandByte -> ErrorCode -> ErrorCommand
-addErrorCommand dict time cmdByte errCode =
-    Dict.insert cmdByte { commandByte = cmdByte, sentTime = time, errorCode = errCode } dict
-
-removeErrorCommand : ErrorCommand -> CommandByte -> ErrorCommand
-removeErrorCommand dict cmdByte =
-    Dict.remove cmdByte dict
+type alias Envelope = { boot: Int, length: Int, contents: List Int, checksum: Int }
 
 -- ENVELOPES
-envelopeToBytes : VH88Envelope -> List Int
+envelopeToBytes : Envelope -> List Int
 envelopeToBytes envelope =
     envelope.boot :: envelope.length :: envelope.contents ++ [ envelope.checksum ]
 
@@ -188,7 +180,7 @@ envelopeToBytes envelope =
 -- -- We use a FIFO to store incoming bytes from the serial port
 -- -- and we return the remaining bytes in the FIFO after extracting a packet
 -- -- or original FIFO if no complete packet is found
-bytesToEnvelope : (Fifo Int) -> (Result VH88Error VH88Envelope, Fifo Int)
+bytesToEnvelope : (Fifo Int) -> (Result Error Envelope, Fifo Int)
 bytesToEnvelope potentiallyNotBootCodeAlignedFifo = 
     let
         alignedFifo = alignBootCode potentiallyNotBootCodeAlignedFifo
@@ -197,7 +189,7 @@ bytesToEnvelope potentiallyNotBootCodeAlignedFifo =
         bytes = Fifo.toList alignedFifo
     in
         case bytes of
-            boot :: length :: rest ->
+            boot :: length :: _ ->
                 let
                     totalLength = length + 2 -- +2 for boot and length bytes
                     maybePacketBytes = List.take totalLength bytes
@@ -211,7 +203,7 @@ bytesToEnvelope potentiallyNotBootCodeAlignedFifo =
                         remainingFifo = List.foldl Fifo.insert Fifo.empty remainingBytes
                     in
                     if checksum == calculatedChecksum then
-                        ( Ok (VH88Envelope boot length contents checksum), remainingFifo )
+                        ( Ok (Envelope boot length contents checksum), remainingFifo )
                     else
                         ( Err ChecksumMismatch, remainingFifo ) -- Return next fifo so we're not stuck
                 else
@@ -219,7 +211,7 @@ bytesToEnvelope potentiallyNotBootCodeAlignedFifo =
             _ ->
                 ( Err InsufficientData, alignedFifo ) -- Not enough bytes for even boot and length, return original fifo
 
-envelopeToPacket : VH88Envelope -> Result VH88Error VH88Packet
+envelopeToPacket : Envelope -> Result Error Packet
 envelopeToPacket envelope =
     case envelope.boot of 
         0x40 -> Err UnsupportedPacketType
@@ -228,7 +220,7 @@ envelopeToPacket envelope =
         0xF1 -> Ok (Status (makeCommandData envelope.contents))
         _ -> Err InvalidBootCode
 
-makeCommandData : List Int -> VH88CommandData
+makeCommandData : List Int -> CommandData
 makeCommandData contents =
     { command = List.head contents |> Maybe.withDefault 0
     , params = List.drop 1 contents
@@ -236,14 +228,7 @@ makeCommandData contents =
 
 
 
-commandToSerial : VH88CommandData -> List Int
-commandToSerial cmd =
-    commandPacketToBytes cmd.command cmd.params
-
-
-
-
-commandPacketToBytes: CommandByte -> CommandParamBytes -> List Int
+commandPacketToBytes: Int -> List Int -> List Int
 commandPacketToBytes cmdByte cmdParams =
     let
         cmdBootCode = 0x40
@@ -253,20 +238,20 @@ commandPacketToBytes cmdByte cmdParams =
     envelopeToBytes envelope
 
 
-createEnvelope : Int -> List Int -> VH88Envelope
+createEnvelope : Int -> List Int -> Envelope
 createEnvelope bootCode contents =
     let 
         length = List.length contents + 1 -- +1 for the checksum
         checksum = calculateChecksum ([bootCode, length] ++ contents)
     in
-    VH88Envelope bootCode length contents checksum
+    Envelope bootCode length contents checksum
 
 calculateChecksum : List Int -> Int
 calculateChecksum bytes =
     (List.sum bytes) |> Bitwise.complement |> (+) 1 |> modBy 0x100 
 
 
-fifoBytesToPacket : (Fifo Int) -> (Result VH88Error VH88Packet, Fifo Int)
+fifoBytesToPacket : (Fifo Int) -> (Result Error Packet, Fifo Int)
 fifoBytesToPacket fifo =
     let
         (maybeEnvelope, remainingFifo) = bytesToEnvelope fifo
@@ -298,25 +283,14 @@ alignBootCode fifo =
             else
                 alignBootCode newFifo -- Discard and continue searching
         Nothing ->
-            fifo -- FIFO is empty, return as is
-
-
-isValidByte : Int -> Bool
-isValidByte byte =
-    byte >= 0 && byte <= 255
-
-
--- CLEAN COMMAND API
+                        fifo -- FIFO is empty, return as is\n\n\n-- CLEAN COMMAND API
 
 {-| Convert command to bytes for port communication -}
 commandToBytes : Command -> CommandResult
 commandToBytes command =
     case command of
-        SetRfidPower power ->
-            if power >= 0 && power <= 33 then
-                Ok (commandPacketToBytes cmdSetRFIDPower [power])
-            else
-                Err "RFID power must be between 0 and 33"
+        SetRfidPower powerLevelValue ->
+            Ok (commandPacketToBytes cmdSetRFIDPower [powerLevelToInt powerLevelValue])
         
         SetDuplicateFilter enabled ->
             let filterValue = if enabled then 1 else 0
@@ -340,30 +314,8 @@ commandToBytes command =
         _ ->
             Err "Command not yet implemented"
 
-{-| High-level command functions with parameter validation -}
-type alias CommandResult = Result String (List Int)
-
-setRfidPower : Int -> CommandResult
-setRfidPower power =
-    commandToBytes (SetRfidPower power)
-
-getDuplicateFilter : CommandResult
-getDuplicateFilter =
-    commandToBytes GetDuplicateFilter
-
-setDuplicateFilter : Bool -> CommandResult
-setDuplicateFilter enabled =
-    commandToBytes (SetDuplicateFilter enabled)
-
-readWorkingParameters : CommandResult
-readWorkingParameters =
-    commandToBytes ReadWorkingParameters
-
-setWorkingParameters : List Int -> CommandResult
-setWorkingParameters params =
-    commandToBytes (SetWorkingParameters params)
-
 {-| Helper function to convert error codes from protocol to meaningful types -}
+type alias CommandResult = Result String (List Int)
 errorCodeFromInt : Int -> ErrorCode
 errorCodeFromInt code =
     case code of
@@ -398,5 +350,5 @@ errorCodeFromInt code =
         _ -> OtherError
 
 -- COMMAND BYTES
-cmdSetRFIDPower : CommandByte
+cmdSetRFIDPower : Int
 cmdSetRFIDPower = 0x04

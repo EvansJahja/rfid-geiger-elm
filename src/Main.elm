@@ -7,7 +7,7 @@ import Html.Attributes exposing (..)
 import Html.Attributes as Attrs
 import Json.Decode
 import Json.Encode
-import VH88
+import VH88 exposing (Command(..), PowerLevel, Packet(..), Error(..), ErrorCode(..), powerLevel, minPower, maxPower, commandToBytes, fifoBytesToPacket, errorCodeFromInt, errorCodeToString, cmdSetRFIDPower)
 import Device exposing (Device)
 import Device exposing (encodeDevice)
 import Fifo exposing (Fifo)
@@ -24,6 +24,43 @@ import Html.Events exposing (onBlur)
 import Html.Events exposing (on)
 import Json.Decode as Decode
 
+-- STATE MANAGEMENT TYPES (moved from VH88)
+
+type alias PendingCommand = Dict Int PendingCommandItem
+type alias PendingCommandItem =
+    { commandByte: Int
+    , sentTime: Time.Posix
+    }
+
+newPendingCommand : PendingCommand
+newPendingCommand = Dict.empty
+
+addPendingCommand :  PendingCommand -> Time.Posix -> Int -> PendingCommand
+addPendingCommand dict time cmdByte =
+    Dict.insert cmdByte { commandByte = cmdByte, sentTime = time } dict
+
+removePendingCommand : PendingCommand -> Int -> PendingCommand
+removePendingCommand dict cmdByte =
+    Dict.remove cmdByte dict
+
+type alias ErrorCommand = Dict Int PendingErrorItem
+type alias PendingErrorItem =
+    { commandByte: Int
+    , sentTime: Time.Posix
+    , errorCode: ErrorCode
+    }
+
+newErrorCommand : ErrorCommand
+newErrorCommand = Dict.empty
+
+addErrorCommand :  ErrorCommand -> Time.Posix -> Int -> ErrorCode -> ErrorCommand
+addErrorCommand dict time cmdByte errCode =
+    Dict.insert cmdByte { commandByte = cmdByte, sentTime = time, errorCode = errCode } dict
+
+removeErrorCommand : ErrorCommand -> Int -> ErrorCommand
+removeErrorCommand dict cmdByte =
+    Dict.remove cmdByte dict
+
 -- MODEL
 
 type alias Model =
@@ -34,8 +71,8 @@ type alias Model =
     , counter : Int
     , selectedDevice : Maybe Device
     , recvBuffer : Fifo.Fifo Int -- FIFO for incoming serial data
-    , pendingCommand: VH88.PendingCommand
-    , errorCommand : VH88.ErrorCommand
+    , pendingCommand: PendingCommand
+    , errorCommand : ErrorCommand
     , showDebug : Bool
     , powerLevel : Int
     }
@@ -50,8 +87,8 @@ init _ =
         , counter = 0
         , selectedDevice = Nothing
         , recvBuffer = Fifo.empty
-        , pendingCommand = VH88.newPendingCommand
-        , errorCommand = VH88.newErrorCommand
+        , pendingCommand = newPendingCommand
+        , errorCommand = newErrorCommand
         , showDebug = False
         , powerLevel = 0
          }
@@ -67,12 +104,12 @@ init _ =
 type Msg
     = RequestPort
     | ReceiveData (List Int)
-    | ReceivePacket VH88.VH88Packet
+    | ReceivePacket Packet
     | ReceiveSerialStatus (Maybe SerialStatus)
     | ReceiveDeviceList (List Device)
     | RequestDeviceList
     | SendDummy
-    | SendCommand VH88.Command 
+    | SendCommand Command 
     | IncrementCounter
     | DebugCmd String
     | DebugToggle Bool
@@ -92,9 +129,9 @@ type SerialStatus
 {-| Recursively parse all complete packets from the buffer
 Returns (list of packets, remaining buffer)
 -}
-parseAllPackets : Fifo Int -> List VH88.VH88Packet -> (List VH88.VH88Packet, Fifo Int)
+parseAllPackets : Fifo Int -> List Packet -> (List Packet, Fifo Int)
 parseAllPackets buffer accumulator =
-    case VH88.fifoBytesToPacket buffer of
+    case fifoBytesToPacket buffer of
         (Ok packet, remainingBuffer) ->
             -- Found a packet, continue parsing
             parseAllPackets remainingBuffer (packet :: accumulator)
@@ -105,7 +142,7 @@ parseAllPackets buffer accumulator =
 
 {-| Process all packets by calling update with ReceivePacket for each one
 -}
-processAllPackets : List VH88.VH88Packet -> Model -> (Model, Cmd Msg)
+processAllPackets : List Packet -> Model -> (Model, Cmd Msg)
 processAllPackets packets model =
     case packets of
         [] ->
@@ -179,36 +216,41 @@ update msg model =
         ReceivePacket packet ->
             let
                 updatedModel = case packet of
-                    VH88.Response commandData ->
+                    Response commandData ->
                         { model 
-                        | pendingCommand = VH88.removePendingCommand model.pendingCommand commandData.command 
-                        , errorCommand = VH88.removeErrorCommand model.errorCommand commandData.command -- remove from error as well
+                        | pendingCommand = removePendingCommand model.pendingCommand commandData.command 
+                        , errorCommand = removeErrorCommand model.errorCommand commandData.command -- remove from error as well
                         }
                     
-                    VH88.Error commandData ->
+                    Error commandData ->
                         let
-                            errorCode = List.head commandData.params |> Maybe.withDefault 0x20 |> VH88.errorCodeFromInt
+                            errorCode = List.head commandData.params |> Maybe.withDefault 0x20 |> errorCodeFromInt
                         in
                             { model 
-                            | pendingCommand = VH88.removePendingCommand model.pendingCommand commandData.command 
-                            , errorCommand = VH88.addErrorCommand model.errorCommand model.time commandData.command errorCode
+                            | pendingCommand = removePendingCommand model.pendingCommand commandData.command 
+                            , errorCommand = addErrorCommand model.errorCommand model.time commandData.command errorCode
                             }
 
-                    VH88.Status _ ->
+                    Status _ ->
                         model  -- Don't remove pending commands for status packets
             in
                 ( { updatedModel | receivedData = "Received valid packet with contents: " ++ (Debug.toString packet) }, Cmd.none )
         
         SendDummy ->
-            case VH88.setRfidPower 5 of
-                Ok bytesToSend ->
-                    let 
-                        pendingCommand = addPendingCommand model VH88.cmdSetRFIDPower 
-                    in
-                        ( { model | pendingCommand = pendingCommand }, serialSend bytesToSend )
+            case powerLevel 5 of
+                Ok validPower ->
+                    case commandToBytes (SetRfidPower validPower) of
+                        Ok bytesToSend ->
+                            let 
+                                pendingCommand = addPendingCommandToModel model cmdSetRFIDPower 
+                            in
+                                ( { model | pendingCommand = pendingCommand }, serialSend bytesToSend )
+                        
+                        Err errorMsg ->
+                            ( { model | receivedData = "Command error: " ++ errorMsg }, Cmd.none )
                 
                 Err errorMsg ->
-                    ( { model | receivedData = "Command error: " ++ errorMsg }, Cmd.none )
+                    ( { model | receivedData = "Power level error: " ++ errorMsg }, Cmd.none )
         RequestDeviceList ->
             ( model, requestDeviceList () )
         ReceiveDeviceList devices ->
@@ -255,13 +297,13 @@ update msg model =
             ( { model | time = newTime }, Cmd.none)
         SendCommand command ->
             case command of 
-                VH88.SetRfidPower powerLevel ->
-                    case VH88.commandToBytes command of
+                SetRfidPower powerLevelValue ->
+                    case commandToBytes command of
                         Ok cmdBytes ->
                             let
-                                pendingCommand = addPendingCommand model VH88.cmdSetRFIDPower
+                                pendingCommand = addPendingCommandToModel model cmdSetRFIDPower
                             in
-                                ( { model | pendingCommand = pendingCommand, powerLevel = powerLevel }, serialSend cmdBytes )
+                                ( { model | pendingCommand = pendingCommand }, serialSend cmdBytes )
                 
                         Err errorMsg ->
                             ( { model | receivedData = "Command error: " ++ errorMsg }, Cmd.none )
@@ -271,9 +313,9 @@ update msg model =
 
                 
 
-addPendingCommand : Model -> VH88.CommandByte -> VH88.PendingCommand
-addPendingCommand model cmdByte =
-    VH88.addPendingCommand model.pendingCommand model.time cmdByte
+addPendingCommandToModel : Model -> Int -> PendingCommand
+addPendingCommandToModel model cmdByte =
+    addPendingCommand model.pendingCommand model.time cmdByte
         
 
 -- SUBSCRIPTIONS
@@ -347,8 +389,14 @@ viewPanelConnection model =
             ]
 viewPanelRfidPower : Model -> Html Msg
 viewPanelRfidPower model =
+    let
+        powerLevelCommand = 
+            case powerLevel model.powerLevel of
+                Ok validPower -> SendCommand (SetRfidPower validPower)
+                Err _ -> SendCommand (SetRfidPower minPower) -- fallback to min power
+    in
     viewPanel ("Power level: " ++ (String.fromInt model.powerLevel))
-    [ input [type_ "range", Attrs.min "0", Attrs.max "33", Attrs.value (String.fromInt model.powerLevel), on "pointerup" (Decode.succeed (SendCommand (VH88.SetRfidPower model.powerLevel))), onInput (SetPowerLevel << Maybe.withDefault 0 << String.toInt)] []
+    [ input [type_ "range", Attrs.min "0", Attrs.max "33", Attrs.value (String.fromInt model.powerLevel), on "pointerup" (Decode.succeed powerLevelCommand), onInput (SetPowerLevel << Maybe.withDefault 0 << String.toInt)] []
 
     ]
 
@@ -396,7 +444,7 @@ viewErrorCommands model =
             (Dict.values model.errorCommand
                 |> List.map
                     (\cmd ->
-                        Html.li [] [ text ("Command Byte: " ++ String.fromInt cmd.commandByte ++ ", Error code: " ++ VH88.errorCodeToString cmd.errorCode ++ ", Error at: " ++ humanTimeDifference cmd.sentTime model.time ++ " ago" )]
+                        Html.li [] [ text ("Command Byte: " ++ String.fromInt cmd.commandByte ++ ", Error code: " ++ errorCodeToString cmd.errorCode ++ ", Error at: " ++ humanTimeDifference cmd.sentTime model.time ++ " ago" )]
                     )
             )
         ]
