@@ -17,6 +17,7 @@ module VH88 exposing
     -- Utilities
     , errorCodeFromInt      -- Int -> ErrorCode
     , errorCodeToString     -- ErrorCode -> String
+    , powerLevelToEncoder      -- PowerLevel -> Encode.Encoder
     
     -- Command byte constants (needed by Main.elm for pending command tracking)
     , cmdSetRFIDPower       -- Int
@@ -24,6 +25,8 @@ module VH88 exposing
 
 import Fifo exposing (Fifo)
 import Bitwise
+import Bytes.Encode as Encode
+import Bytes.Decode as Decode
 
 
 -- POWER LEVEL TYPE
@@ -47,10 +50,9 @@ minPower = PowerLevel 0
 maxPower : PowerLevel
 maxPower = PowerLevel 33
 
-{-| Extract the integer value from PowerLevel (for internal use) -}
-powerLevelToInt : PowerLevel -> Int
-powerLevelToInt (PowerLevel level) = level
 
+powerLevelToEncoder : PowerLevel -> Encode.Encoder
+powerLevelToEncoder (PowerLevel level) = Encode.unsignedInt8 level
 
 -- COMMAND TYPES
 
@@ -289,8 +291,8 @@ alignBootCode fifo =
 commandToBytes : Command -> CommandResult
 commandToBytes command =
     case command of
-        SetRfidPower powerLevelValue ->
-            Ok (commandPacketToBytes cmdSetRFIDPower [powerLevelToInt powerLevelValue])
+        SetRfidPower (PowerLevel level) ->
+            Ok (commandPacketToBytes cmdSetRFIDPower [level])
         
         SetDuplicateFilter enabled ->
             let filterValue = if enabled then 1 else 0

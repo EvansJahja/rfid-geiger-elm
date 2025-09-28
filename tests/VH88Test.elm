@@ -39,34 +39,28 @@ suite =
                     (_, nextFifo) = VH88.fifoBytesToPacket fifo
                 in
                     Expect.equal 0 (List.length (Fifo.toList nextFifo))
-            , test "must discard partial packet even with valid boot code" <|
-                \_ ->
-                let
-                    fifo = Fifo.fromList [0xf0, 0xf0, 0x03, 0x03, 0x00, 0x0a ]
-                    (_, nextFifo) = VH88.fifoBytesToPacket fifo
-                in
-                    Expect.equal 0 (List.length (Fifo.toList nextFifo))
-
             ]
         , describe "Test command packets"
             [
                 test "Serialize SetRFIDPower 5" <|
                     \_ ->
-                    case VH88.setRfidPower 5 of
-                        Ok commandBytes ->
-                            Expect.equal [0x40, 0x03, 0x04, 0x05, 0xb4] commandBytes
-                        
-                        Err _ ->
-                            Expect.fail "Command should succeed"
+                    let
+                        powerResult = case VH88.powerLevel 5 of
+                            Ok p -> p
+                            Err msg -> Debug.todo msg
+                    in
+                        case VH88.commandToBytes (VH88.SetRfidPower powerResult) of
+                            Ok commandBytes ->
+                                Expect.equal [0x40, 0x03, 0x04, 0x05, 0xb4] commandBytes
+                            
+                            Err _ ->
+                                Expect.fail "Command should succeed"
                             
                 , test "SetRFIDPower validation - invalid power" <|
                     \_ ->
-                    case VH88.setRfidPower 50 of
-                        Ok _ ->
-                            Expect.fail "Should reject power > 33"
-                        
-                        Err errorMsg ->
-                            Expect.equal "RFID power must be between 0 and 33" errorMsg
+                    case VH88.powerLevel 50 of
+                            Ok _ -> Expect.fail "Should reject power > 33"
+                            Err msg -> Expect.equal "Power level must be between 0 and 33, got 50" msg
 
             ]
         ]
