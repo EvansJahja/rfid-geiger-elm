@@ -18,6 +18,7 @@ module VH88 exposing
     , errorCodeFromInt      -- Int -> ErrorCode
     , errorCodeToString     -- ErrorCode -> String
     , powerLevelToEncoder      -- PowerLevel -> Encode.Encoder
+    , powerLevelDecoder        -- Decode.Decoder PowerLevel
     
     -- Command byte constants (needed by Main.elm for pending command tracking)
     , cmdSetRFIDPower       -- Int
@@ -53,6 +54,16 @@ maxPower = PowerLevel 33
 
 powerLevelToEncoder : PowerLevel -> Encode.Encoder
 powerLevelToEncoder (PowerLevel level) = Encode.unsignedInt8 level
+
+powerLevelDecoder : Decode.Decoder PowerLevel
+powerLevelDecoder =
+    Decode.map powerLevel (Decode.unsignedInt8)
+        |> Decode.andThen
+            (\result ->
+                case result of
+                    Ok p -> Decode.succeed p
+                    Err _ -> Decode.fail
+            )
 
 -- COMMAND TYPES
 
