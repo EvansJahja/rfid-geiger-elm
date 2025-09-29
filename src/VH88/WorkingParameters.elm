@@ -10,41 +10,6 @@ import VH88 exposing (PowerLevel)
 import VH88 exposing (powerLevelToEncoder)
 
 
-
-type alias Reserved = 
-    { res3 : Int 
-    , res4 : Int
-    , res12 : Int
-    , res13 : Int
-    , res14 : Int
-    , res15 : Int
-    , res16 : Int
-    , res17 : Int
-    , res18 : Int
-    , res20 : Int
-    , res28 : Int
-    , res29 : Int
-    , res30 : Int
-    , res31 : Int
-    }
-defaultReserved : Reserved
-defaultReserved = 
-    { res3 = 0
-    , res4 = 0
-    , res12 = 0
-    , res13 = 0
-    , res14 = 0
-    , res15 = 0
-    , res16 = 0
-    , res17 = 0
-    , res18 = 0
-    , res20 = 1
-    , res28 = 0
-    , res29 = 0
-    , res30 = 0
-    , res31 = 0
-    }
-
 type alias WorkingParameters =
     { tagType : Int
     , outputCarriageReturn : OutputCarriageReturn
@@ -54,7 +19,6 @@ type alias WorkingParameters =
     , transmitPower : PowerLevel
     , hwVersion : Int
     , moduleType : ModuleType
-    -- , reserved : Reserved
     , workingMode : WorkingMode
     , dataOutputMode : DataOutputMode
     , readerVolume : ReaderVolume
