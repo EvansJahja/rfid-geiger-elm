@@ -18,12 +18,15 @@ import Time
 import Process
 import Task
 import Dict exposing (Dict)
+import Set exposing (Set)
 import Json.Decode as Decode
 import VH88.Command as Command
 import VH88.Packet as Packet
 import Platform.Cmd as Cmd
 import BytesHelper
 import VH88.WorkingParameters as WorkingParameters
+import Hex
+import Html exposing (span)
 
 -- STATE MANAGEMENT TYPES 
 
@@ -74,13 +77,20 @@ removeErrorCommand dict cmd =
     in
     Dict.remove key dict
 
-type EPC =
-    EPC (List Int)
+type alias EPC = (List Int)
+epcToString : EPC -> String
+epcToString nums =
+    nums
+        |> List.map Hex.toString
+        |> String.join ":"
 
-type alias Inventory =
+type alias InventoryItem =
     { epc : EPC
     , lastSeen : Time.Posix
     }
+
+type alias Inventory = Dict EPC InventoryItem
+
 
 -- MODEL
 
@@ -100,6 +110,8 @@ type alias Model =
     , editWorkingParameters : Maybe WorkingParameters
     , serialStatus : SerialStatus
     , platform : String
+    , inventory : Inventory
+    , epcFilter : Set EPC
     }
 
 
@@ -137,6 +149,8 @@ init flags =
             , editWorkingParameters = Nothing
             , serialStatus = SerialNothing
             , platform = platform
+            , inventory = Dict.empty
+            , epcFilter = Set.empty
             }
         , initCmd
         )
@@ -160,6 +174,10 @@ type Msg
     | Connect Device
     | Tick Time.Posix
     | SetPowerLevel Int
+    | ClearInventory
+    | EPCFilter EPCFilterOperation
+
+type EPCFilterOperation = Add EPC | Remove EPC
 
 type SerialStatus
     = SerialNothing
@@ -305,10 +323,20 @@ update msg model =
                         ( { model | workingParameters = maybeWorkingParams, receivedData = "Working parameters updated." }, Cmd.none )
                 VH88.Command.CommandWithArgs (VH88.Command.HostComputerCardReading, args) ->
                     let
-                        epc = EPC args
+                        epc : EPC
+                        epc = args
+
+                        -- we may be filtering this epc
+                        filteredEpc = (Set.isEmpty model.epcFilter) || (Set.member epc model.epcFilter)
+                        inventoryItem = { epc = epc, lastSeen = model.time }
+                        newInventory = 
+                            if filteredEpc then
+                                Dict.insert epc inventoryItem model.inventory
+                            else
+                                model.inventory
                         
                     in
-                        (model, Cmd.none)
+                        ( { model | inventory = newInventory }, Cmd.none)
                 VH88.Command.CommandWithArgs (unk, args) ->
                     ( { model | receivedData = "Received unknown response: " ++ (Debug.toString (unk, args)) }, Cmd.none )
         
@@ -368,6 +396,14 @@ update msg model =
 
         SetPowerLevel powerLevel ->
             ( { model | powerLevel = powerLevel }, Cmd.none )
+        ClearInventory ->
+            ( { model | inventory = Dict.empty }, Cmd.none )
+        EPCFilter operation ->
+            case operation of
+                Add epc ->
+                    ( { model | epcFilter = Set.insert epc model.epcFilter }, Cmd.none )
+                Remove epc ->
+                    ( { model | epcFilter = Set.remove epc model.epcFilter }, Cmd.none )
 
                 
 
@@ -435,6 +471,8 @@ view model =
                 viewPanelWorkingParameter ewp
             Nothing ->
                 button [onClick (SetEditWorkingParameters model.workingParameters)] [ text "Edit Working Parameters"]
+        , viewPanelFilter model
+        , viewPanelInventory model
         ]
 
 viewPanel : String -> (List (Html msg)) -> Html msg
@@ -501,6 +539,7 @@ viewDebugCmd model =
         [ button [ onClick (ReceiveDeviceList [Device "Device A" "00:00:00:00:00:01", Device "Device B" "00:00:00:00:00:02"]) ] [text "Debug get device list"]
         , button [ onClick (ReceiveData [0xf0, 0x03, 0x04, 0x00, 0x09] ) ] [text "Receive successful cmd 0x4"]
         , button [ onClick (ReceiveData [0xf4, 0x03, 0x04, 0x11, 0xf4] ) ] [text "Receive error cmd 0x4"]
+        , button [ onClick (SendCommand VH88.startListingTags) ] [text "Debug start listing tags"]
         ]
     , viewPanel "Debug Info"
         [ viewPendingCommands model
@@ -565,9 +604,49 @@ viewPanelWorkingParameter wp =
             -- , option [ selected (wp.realTimeOutput == WorkingParameters.NoOutputHost_NoStoreUSB), onInput (setRealTimeOutput WorkingParameters.NoOutputHost_NoStoreUSB) ] [ text "NoOutputHost_NoStoreUSB" ]
             ]
         , label [for "realTimeOutput"] [ text "Real Time Output" ]
-
-
     ]
+
+viewPanelFilter : Model -> Html Msg
+viewPanelFilter model =
+    let
+       epcToLi epc =
+            Html.li []
+                [ span [] 
+                    [ text ("EPC: " ++ (epcToString epc) )
+                    , button [ onClick (EPCFilter (Remove epc)) ] [ text "Remove From Filter" ]
+                    ]
+                ]     
+    in
+        viewPanel "EPC Filter"
+        [ h1 [] [ text ("Total tags in filter: " ++ String.fromInt (Set.size model.epcFilter)) ]
+        , ul []
+            (model.epcFilter
+                |> Set.toList
+                |> List.map epcToLi
+            )
+        ]
+viewPanelInventory : Model -> Html Msg
+viewPanelInventory model =
+    let
+       itemToLi item =
+            Html.li []
+                [ span [] 
+                    [ text ("EPC: " ++ (epcToString item.epc) ++ ", Last Seen: " ++ humanTimeDifference item.lastSeen model.time ++ " ago")
+                    , button  [onClick (EPCFilter (Add item.epc))] [ text "Add to Filter" ]
+                    ]
+                ]     
+    in
+    
+        viewPanel "Inventory"
+            [ h1 [] [ text ("Total unique tags: " ++ String.fromInt (Dict.size model.inventory)) ]
+            , button [ onClick ClearInventory ] [ text "Clear Inventory" ]
+            , ul []
+                (Dict.values model.inventory
+                    |> List.map itemToLi
+                )
+            ]
+
+
 humanTimeDifference : Time.Posix -> Time.Posix -> String
 humanTimeDifference earlier later =
     let

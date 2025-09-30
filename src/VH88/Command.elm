@@ -38,6 +38,7 @@ type Command
     | DownloadUDiskInventoryData
     | DeleteUDiskInventoryFile
     | SaveCurrentInventoryDataToUDisk
+    | StartListingTags
 
 -- we need to convert to bytes
 
@@ -75,6 +76,7 @@ commandMappings =
     , ( DownloadUDiskInventoryData, CommandByte 0x22 )
     , ( DeleteUDiskInventoryFile, CommandByte 0x23 )
     , ( SaveCurrentInventoryDataToUDisk, CommandByte 0x24 )
+    , ( StartListingTags, CommandByte 0xEE)
     ]
 
 intToCommandByte : Int -> CommandByte

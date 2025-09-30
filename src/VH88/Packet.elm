@@ -83,7 +83,7 @@ bytesToEnvelope potentiallyNotBootCodeAlignedFifo =
                     totalLength = length + 2 -- +2 for boot and length bytes
                     maybePacketBytes = List.take totalLength bytes
                 in
-                if Debug.log "List length" (List.length maybePacketBytes) == Debug.log "total Length" totalLength then
+                if List.length maybePacketBytes == totalLength then
                     let
                         contents = List.drop 2 maybePacketBytes |> List.take (length - 1)
                         checksum = List.drop (totalLength - 1) maybePacketBytes |> List.head |> Maybe.withDefault 0

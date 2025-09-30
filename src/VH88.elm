@@ -52,3 +52,9 @@ setWorkingParameters params =
         encodedParams = BytesHelper.encodeListInt (WorkingParameters.toEncoder params)
     in
         Packet.Request (CommandWithArgs (SetWorkingParameters, encodedParams))
+
+
+
+startListingTags : Packet
+startListingTags =
+    Packet.Request (CommandWithArgs (StartListingTags, [1, 0])) -- EPC, len=0
