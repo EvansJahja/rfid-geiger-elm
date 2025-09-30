@@ -1,4 +1,9 @@
-module VH88.Error exposing (..)
+module VH88.Error exposing 
+    ( ErrorCode(..) 
+    , Error(..) 
+    , errorCodeFromInt
+    , errorCodeToString
+    )
 
 type ErrorCode
     = Success

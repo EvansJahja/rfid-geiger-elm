@@ -1,7 +1,14 @@
-module VH88.Packet exposing (..)
+module VH88.Packet exposing 
+    ( Packet(..) 
+    , packetToBytes
+    , packetContents
+    , bytesToEnvelope
+    , envelopeToPacket
+    )
+
 import VH88.Command as Command exposing (CommandWithArgs(..))
 import Fifo exposing (Fifo)
-import VH88.Error exposing (Error(..))
+import VH88.Error exposing (Error(..), ErrorCode(..))
 import Bitwise
 
 type Packet

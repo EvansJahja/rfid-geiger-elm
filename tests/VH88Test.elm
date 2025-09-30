@@ -4,8 +4,6 @@ import Test exposing (..)
 import Expect
 import VH88 
 import Fifo exposing (Fifo)
-import VH88.Command
-import VH88.Command as Command
 import VH88.Packet as Packet
 
 suite : Test

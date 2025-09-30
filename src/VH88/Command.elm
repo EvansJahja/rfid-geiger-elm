@@ -1,4 +1,10 @@
-module VH88.Command exposing (..)
+module VH88.Command exposing 
+    ( Command(..) 
+    , CommandWithArgs(..) 
+    , commandToInt
+    , commandByteToCommand
+    , listIntToCommandWithArgs
+    )
 
 
 type Command

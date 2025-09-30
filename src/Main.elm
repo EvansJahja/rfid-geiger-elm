@@ -1,8 +1,8 @@
 port module Main exposing (..)
 
 import Browser
-import Html exposing (Html, button, div, input, text, select, option, h1)
-import Html.Events exposing (onClick, onInput)
+import Html exposing (Html, button, div, input, text, select, option, h1, ul, label)
+import Html.Events exposing (onClick, onInput, onCheck, on)
 import Html.Attributes exposing (..)
 import Html.Attributes as Attrs
 import Json.Decode
@@ -11,22 +11,12 @@ import VH88.WorkingParameters exposing (WorkingParameters)
 import VH88.Command exposing (Command(..))
 import VH88.Packet exposing (Packet(..))
 import VH88.Error exposing (Error(..), ErrorCode(..), errorCodeFromInt, errorCodeToString)
-import VH88 exposing (setRFIDPower)
-
-import Device exposing (Device)
-import Device exposing (encodeDevice)
+import VH88
+import Device exposing (Device, encodeDevice)
 import Fifo exposing (Fifo)
-import Html exposing (p)
-import Html exposing (ul)
 import Time
 import Task
 import Dict exposing (Dict)
-import Dict exposing (diff)
-import Html exposing (label)
-import Html.Events exposing (onCheck)
-import Html.Events exposing (onMouseUp)
-import Html.Events exposing (onBlur)
-import Html.Events exposing (on)
 import Json.Decode as Decode
 import VH88.Command as Command
 import VH88.Packet as Packet
