@@ -2,7 +2,8 @@ import { Capacitor } from '@capacitor/core';
 import { CapacitorBluetoothSerial } from 'capacitor-bluetooth-serial';
 import { Elm } from './Main.elm';
 
-const app = Elm.Main.init({ node: document.getElementById('elm-app') });
+const platform = Capacitor.getPlatform();
+const app = Elm.Main.init({ node: document.getElementById('elm-app'), flags: { platform } });
 
 // Module-level variables to maintain serial port state
 
@@ -22,15 +23,6 @@ app.ports.requestDeviceList.subscribe(function() {
       CapacitorBluetoothSerial.listDevices().then(({devices}) => {
           console.log("Available Bluetooth devices:", JSON.stringify(devices));
           app.ports.deviceList.send(devices.map(d => ({ name: d.name, address: d.address })));
-      })
-    });
-});
-
-app.ports.requestPort.subscribe(async function() {
-    CapacitorBluetoothSerial.checkAndRequestBluetoothPermission().then(() => {
-      CapacitorBluetoothSerial.listDevices().then(({devices}) => {
-          console.log("Available Bluetooth devices:", JSON.stringify(devices));
-          app.ports.deviceList.send(devices.map(d => d.name));
       })
     });
 });

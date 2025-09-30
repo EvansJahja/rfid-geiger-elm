@@ -116,9 +116,6 @@ envelopeToPacket envelope =
         _ -> Err InvalidBootCode
 
 
-
-
-
 createEnvelope : Int -> List Int -> Envelope
 createEnvelope bootCode contents =
     let 

@@ -38,3 +38,11 @@ decodeListInt dec listInt =
         
     in
         Bytes.Decode.decode dec listIntAsBytes
+
+encodeListInt : Bytes.Encode.Encoder -> List Int
+encodeListInt enc =
+    let
+        encodedBytes = Bytes.Encode.encode enc
+        asListInt = bytesToListInt encodedBytes
+    in
+        asListInt 

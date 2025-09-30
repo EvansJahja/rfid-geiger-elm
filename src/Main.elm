@@ -1,7 +1,7 @@
 port module Main exposing (..)
 
 import Browser
-import Html exposing (Html, button, div, input, text, select, option, h1, ul, label)
+import Html exposing (Html, button, div, input, text, select, option, h1, ul, label, p)
 import Html.Events exposing (onClick, onInput, onCheck, on)
 import Html.Attributes exposing (..)
 import Html.Attributes as Attrs
@@ -20,6 +20,10 @@ import Dict exposing (Dict)
 import Json.Decode as Decode
 import VH88.Command as Command
 import VH88.Packet as Packet
+import Platform.Cmd as Cmd
+import BytesHelper
+import VH88.WorkingParameters as WorkingParameters
+import Html exposing (s)
 
 -- STATE MANAGEMENT TYPES (moved from VH88)
 
@@ -85,41 +89,62 @@ type alias Model =
     , showDebug : Bool
     , powerLevel : Int
     , workingParameters : Maybe WorkingParameters
+    , editWorkingParameters : Maybe WorkingParameters
+    , serialStatus : SerialStatus
+    , platform : String
     }
 
 
-init : () -> ( Model, Cmd Msg )
-init _ =
-    (   { time = Time.millisToPosix 0
-        , receivedData = "No data yet."
-        , textToSend = ""
-        , deviceList = []
-        , counter = 0
-        , selectedDevice = Nothing
-        , recvBuffer = Fifo.empty
-        , pendingCommand = newPendingCommand
-        , errorCommand = newErrorCommand
-        , showDebug = False
-        , powerLevel = 0
-        , workingParameters = Nothing
-         }
-    , Cmd.batch 
-        [ registerListener ()
-        , requestDeviceList ()
-        , Time.now |> Task.perform Tick
-        ]
-    )
+init : (Json.Decode.Value) -> ( Model, Cmd Msg )
+init flags =
+    let
+        platform = Decode.decodeValue (Decode.field "platform" Decode.string) flags |> Result.withDefault "unknown"
+        initCmd = case platform of
+            "web" ->
+                Cmd.batch
+                    [ registerListener ()
+                    -- , requestDeviceList () -- don't request device list automatically on web, need user gesture
+                    , Time.now |> Task.perform Tick
+                    ]
+            _ -> 
+                Cmd.batch
+                    [ registerListener ()
+                    , requestDeviceList ()
+                    , Time.now |> Task.perform Tick
+                    ]
+        
+    in
+        (   { time = Time.millisToPosix 0
+            , receivedData = "No data yet."
+            , textToSend = ""
+            , deviceList = []
+            , counter = 0
+            , selectedDevice = Nothing
+            , recvBuffer = Fifo.empty
+            , pendingCommand = newPendingCommand
+            , errorCommand = newErrorCommand
+            , showDebug = False
+            , powerLevel = 0
+            , workingParameters = Nothing
+            , editWorkingParameters = Nothing
+            , serialStatus = SerialNothing
+            , platform = platform
+            }
+        , initCmd
+        )
 
 -- MESSAGES
 
 type Msg
-    = RequestPort
-    | ReceiveData (List Int)
+    = ReceiveData (List Int)
     | ReceivePacket Packet
     | ReceiveResponse VH88.Command.CommandWithArgs
     | ReceiveSerialStatus (Maybe SerialStatus)
     | ReceiveDeviceList (List Device)
     | RequestDeviceList
+    | ReadWorkingParameters
+    | SetEditWorkingParameters (Maybe WorkingParameters)
+    | UpdateWorkingParameters WorkingParameters
     | SendCommand Packet 
     | IncrementCounter
     | DebugCmd String
@@ -130,10 +155,28 @@ type Msg
     | SetPowerLevel Int
 
 type SerialStatus
-    = SerialWaitingForUser
+    = SerialNothing
+    | SerialWaitingForUser
     | SerialConnected
     | SerialConnecting
     | SerialError String
+serialStatusToString : SerialStatus -> String
+serialStatusToString status =
+    case status of
+        SerialNothing ->
+            "No Status"
+
+        SerialWaitingForUser ->
+            "Waiting for user to select device"
+
+        SerialConnected ->
+            "Connected"
+
+        SerialConnecting ->
+            "Connecting..."
+
+        SerialError msg ->
+            "Error: " ++ msg
 
 -- HELPER FUNCTIONS
 
@@ -191,8 +234,6 @@ port debugPort : String -> Cmd msg
 port deviceConnect : (Json.Encode.Value) -> Cmd msg
 port registerListener : () -> Cmd msg
 
-port requestPort : () -> Cmd msg
-
 port serialSend : (List Int) -> Cmd msg
 
 port serialData : (List Int -> msg) -> Sub msg
@@ -207,9 +248,6 @@ port deviceList : (Json.Decode.Value -> msg) -> Sub msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        RequestPort ->
-            ( model, requestPort () )
-
         ReceiveData byteList ->
             let
                 appendedBuffer = List.foldl Fifo.insert model.recvBuffer byteList
@@ -222,19 +260,16 @@ update msg model =
                     
                     _ ->
                         -- Process all packets sequentially
-                        processAllPackets packets { model | recvBuffer = finalBuffer }
+                        processAllPackets (Debug.log "Recv packet" packets) { model | recvBuffer = finalBuffer }
 
         ReceivePacket packet ->
             let
                 (updatedModel, newCmd) = case packet of
-                    Request _ ->
-                        -- Requests are outgoing, we shouldn't receive them
-                        (model, Cmd.none)
                         
-                    Response (Command.CommandWithArgs (cmd, _)) ->
+                    Response (Command.CommandWithArgs (cmd, args)) ->
                         -- we may have special handling for certain command
                         let
-                            (responseModel, responseCmd) = update (ReceiveResponse (Command.CommandWithArgs (cmd, []))) model
+                            (responseModel, responseCmd) = update (ReceiveResponse (Command.CommandWithArgs (cmd, args))) model
                         in
                         ( { responseModel 
                         | pendingCommand = removePendingCommand model.pendingCommand cmd 
@@ -253,15 +288,25 @@ update msg model =
                                 }
                                 , Cmd.none
                             )
-
                     Status _ ->
                         (model, Cmd.none)  -- Don't remove pending commands for status packets
-            in
-                ( { updatedModel | receivedData = "Received valid packet with contents: " ++ (Debug.toString packet) }, newCmd )
 
-        ReceiveResponse _ ->
-            -- No-op for now
-            (model, Cmd.none)
+                    Request _ ->
+                        -- Requests are outgoing, we shouldn't receive them
+                        (model, Cmd.none)
+            in
+                ( updatedModel , newCmd )
+
+        ReceiveResponse response ->
+            case response of
+                VH88.Command.CommandWithArgs (VH88.Command.ReadWorkingParameters, args) ->
+                    let
+                        decoder = VH88.WorkingParameters.toDecoder
+                        maybeWorkingParams = BytesHelper.decodeListInt decoder args
+                    in
+                        ( { model | workingParameters = maybeWorkingParams, receivedData = "Working parameters updated." }, Cmd.none )
+                VH88.Command.CommandWithArgs (unk, args) ->
+                    ( { model | receivedData = "Received unknown response: " ++ (Debug.toString (unk, args)) }, Cmd.none )
         
         RequestDeviceList ->
             ( model, requestDeviceList () )
@@ -276,21 +321,22 @@ update msg model =
             in
             ( { model | deviceList = devices , selectedDevice = firstDeviceCmd }, Cmd.none )
 
+        ReadWorkingParameters ->
+            ( model, sendPacket VH88.readWorkingParameters )
+        SetEditWorkingParameters maybeParams ->
+            ( { model | editWorkingParameters = maybeParams }, Cmd.none )
+        UpdateWorkingParameters params ->
+            ( { model | workingParameters = Just params, editWorkingParameters = Nothing}, sendPacket (VH88.setWorkingParameters params) )
         ReceiveSerialStatus maybeStatus ->
             case maybeStatus of
                 Just status ->
-                    case status of
-                        SerialWaitingForUser ->
-                            ( { model | receivedData = "Status: Waiting for user." }, Cmd.none )
-                        
-                        SerialConnected ->
-                            ( { model | receivedData = "Status: Connected!" }, Cmd.none )
-                        
-                        SerialConnecting ->
-                            ( { model | receivedData = "Status: Connecting..." }, Cmd.none )
-
-                        SerialError errMsg ->
-                            ( { model | receivedData = "Status: Error - " ++ errMsg }, Cmd.none )
+                    let
+                        newModel = { model | serialStatus = status }
+                    in
+                        if status == SerialConnected then
+                            update ReadWorkingParameters newModel
+                        else
+                            (newModel, Cmd.none)
                 
                 Nothing ->
                     ( { model | receivedData = "Status: Unknown status received." }, Cmd.none )
@@ -309,27 +355,13 @@ update msg model =
             ( { model | time = newTime }, Cmd.none)
         SendCommand packet ->
             let
-                serialSendCmd = VH88.Packet.packetToBytes packet |> serialSend 
+                serialSendCmd = sendPacket packet
                 (cmd, _) = Packet.packetContents packet
                 pendingCommand = addPendingCommandToModel model cmd
 
             in
                 ( { model | pendingCommand = pendingCommand }, serialSendCmd)
 
-            -- Debug.todo "A"
-
-            -- case command of 
-            --     SetRfidPower powerLevelValue ->
-            --         case commandToBytes command of
-            --             Ok cmdBytes ->
-            --                 let
-            --                     pendingCommand = addPendingCommandToModel model cmdSetRFIDPower
-            --                 in
-            --                     ( { model | pendingCommand = pendingCommand }, serialSend cmdBytes )
-                
-            --             Err errorMsg ->
-            --                 ( { model | receivedData = "Command error: " ++ errorMsg }, Cmd.none )
-            --     _ -> Debug.todo "Implement other commands as needed"
         SetPowerLevel powerLevel ->
             ( { model | powerLevel = powerLevel }, Cmd.none )
 
@@ -338,6 +370,10 @@ update msg model =
 addPendingCommandToModel : Model -> Command -> PendingCommand
 addPendingCommandToModel model cmd =
     addPendingCommand model.pendingCommand model.time cmd
+
+sendPacket : Packet -> Cmd Msg
+sendPacket packet =
+    packet |> VH88.Packet.packetToBytes |> serialSend
         
 
 -- SUBSCRIPTIONS
@@ -364,7 +400,8 @@ subscriptions _ =
 view : Model -> Html Msg
 view model =
     div [class "bg-teal-900 flex flex-col min-h-screen text-white p-4"]
-        [ div [] [button [ onClick RequestPort ] [ text "Connect to Serial Port" ]]
+        [ Html.p [] [text ("Platform: " ++ model.platform)]
+        , div [] [button [ onClick RequestDeviceList ] [ text "Connect to Serial Port" ]]
         , div [] [ input [ placeholder "Enter text..." ] [] ]
         , div [] [ text <| "Received: " ++ model.receivedData ]
         , div [] [ text <| "Counter: " ++ String.fromInt (model.counter) ]
@@ -375,6 +412,11 @@ view model =
         , htmlIf model.showDebug (viewDebugCmd model) (div [][])
         , viewPanelConnection model
         , viewPanelRfidPower model
+        , case model.editWorkingParameters of
+            Just ewp ->
+                viewPanelWorkingParameter ewp
+            Nothing ->
+                button [onClick (SetEditWorkingParameters model.workingParameters)] [ text "Edit Working Parameters"]
         ]
 
 viewPanel : String -> (List (Html msg)) -> Html msg
@@ -398,7 +440,8 @@ viewPanelConnection model =
                     )
         in
             viewPanel "Connection"
-            [ htmlIf (List.isEmpty model.deviceList)
+            [ p [] [text ("Connection status: " ++ serialStatusToString model.serialStatus)]
+            , htmlIf (List.isEmpty model.deviceList)
                             (Html.h1 [class "text-gray-300 text-3xl font-bold underline"] [ text "No Bluetooth Devices Found" ])
                             (div [] 
                                 [text "Available Bluetooth Devices:"
@@ -473,7 +516,40 @@ viewErrorCommands model =
                     )
             )
         ]
+viewPanelWorkingParameter : WorkingParameters -> Html Msg
+viewPanelWorkingParameter wp =
+    let
+        setRealTimeOutput : String -> Msg
+        setRealTimeOutput realTimeOutputStr = 
+            let
+                realTimeOutput = 
+                    case realTimeOutputStr of
+                        "OutputHost_StoreUSB" -> WorkingParameters.OutputHost_StoreUSB
+                        "NoOutputHost_StoreUSB" -> WorkingParameters.NoOutputHost_StoreUSB
+                        "OutputHost_NoStoreUSB" -> WorkingParameters.OutputHost_NoStoreUSB
+                        "NoOutputHost_NoStoreUSB" -> WorkingParameters.NoOutputHost_NoStoreUSB
+                        _ -> wp.realTimeOutput -- default to current if unrecognized
+            in
+                UpdateWorkingParameters { wp | realTimeOutput = realTimeOutput }
 
+    in
+        viewPanel "Working Parameters"
+        [ select [id "realTimeOutput", onInput setRealTimeOutput]
+
+            [ option [value "OutputHost_StoreUSB" , selected (wp.realTimeOutput == WorkingParameters.OutputHost_StoreUSB)] [ text "OutputHost_StoreUSB" ]
+            , option [value "NoOutputHost_StoreUSB" , selected (wp.realTimeOutput == WorkingParameters.NoOutputHost_StoreUSB) ] [ text "NoOutputHost_StoreUSB" ]
+            , option [value "OutputHost_NoStoreUSB" , selected (wp.realTimeOutput == WorkingParameters.OutputHost_NoStoreUSB) ] [ text "OutputHost_NoStoreUSB" ]
+            , option [value "NoOutputHost_NoStoreUSB" , selected (wp.realTimeOutput == WorkingParameters.NoOutputHost_NoStoreUSB) ] [ text "NoOutputHost_NoStoreUSB" ]
+
+            -- [ option [ selected (wp.realTimeOutput == WorkingParameters.OutputHost_StoreUSB), onInput (setRealTimeOutput WorkingParameters.OutputHost_StoreUSB) ] [ text "OutputHost_StoreUSB" ]
+            -- , option [ selected (wp.realTimeOutput == WorkingParameters.NoOutputHost_StoreUSB), onInput (setRealTimeOutput WorkingParameters.NoOutputHost_StoreUSB) ] [ text "NoOutputHost_StoreUSB" ]
+            -- , option [ selected (wp.realTimeOutput == WorkingParameters.OutputHost_NoStoreUSB), onInput (setRealTimeOutput WorkingParameters.OutputHost_NoStoreUSB) ] [ text "OutputHost_NoStoreUSB" ]
+            -- , option [ selected (wp.realTimeOutput == WorkingParameters.NoOutputHost_NoStoreUSB), onInput (setRealTimeOutput WorkingParameters.NoOutputHost_NoStoreUSB) ] [ text "NoOutputHost_NoStoreUSB" ]
+            ]
+        , label [for "realTimeOutput"] [ text "Real Time Output" ]
+
+
+    ]
 humanTimeDifference : Time.Posix -> Time.Posix -> String
 humanTimeDifference earlier later =
     let
@@ -486,7 +562,7 @@ humanTimeDifference earlier later =
     
 -- MAIN
 
-main : Program () Model Msg
+main : Program Json.Decode.Value Model Msg
 main =
     Browser.element
         { init = init

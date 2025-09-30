@@ -70,7 +70,7 @@ commandMappings =
     , ( GetReaderId, CommandByte 0x1D )
     , ( SetBluetoothName, CommandByte 0x1E )
     , ( GetBluetoothName, CommandByte 0x1F )
-    , ( HostComputerCardReading, CommandByte 0x20 )
+    , ( HostComputerCardReading, CommandByte 0xE1 )
     , ( GetUDiskInventoryFileDirectory, CommandByte 0x21 )
     , ( DownloadUDiskInventoryData, CommandByte 0x22 )
     , ( DeleteUDiskInventoryFile, CommandByte 0x23 )

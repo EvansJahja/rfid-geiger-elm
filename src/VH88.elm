@@ -1,13 +1,11 @@
-module VH88 exposing 
-    ( fifoBytesToPacket     -- Fifo Int -> (Result Error Packet, Fifo Int)
-    , setRFIDPower         -- Int -> Result String (Packet
-    
-    )
+module VH88 exposing (..)
 
 import Fifo exposing (Fifo)
 import VH88.Command as Command exposing (CommandWithArgs(..), Command(..))
 import VH88.Packet as Packet exposing (Packet(..), packetToBytes, envelopeToPacket, bytesToEnvelope)
 import VH88.Error exposing (Error)
+import VH88.WorkingParameters as WorkingParameters exposing (WorkingParameters) 
+import BytesHelper
 
 
 
@@ -43,3 +41,14 @@ setRFIDPower powerLevel =
         Err "Power level must be between 0 and 33"
     else
         Ok (Packet.Request (CommandWithArgs (SetRfidPower, [ powerLevel ])))
+
+readWorkingParameters : Packet
+readWorkingParameters =
+    Packet.Request (CommandWithArgs (ReadWorkingParameters, []))
+
+setWorkingParameters : WorkingParameters -> Packet 
+setWorkingParameters params =
+    let
+        encodedParams = BytesHelper.encodeListInt (WorkingParameters.toEncoder params)
+    in
+        Packet.Request (CommandWithArgs (SetWorkingParameters, encodedParams))

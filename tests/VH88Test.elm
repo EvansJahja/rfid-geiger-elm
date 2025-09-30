@@ -5,6 +5,7 @@ import Expect
 import VH88 
 import Fifo exposing (Fifo)
 import VH88.Packet as Packet
+import VH88.Command as Command exposing (CommandWithArgs(..), Command(..))
 
 suite : Test
 suite =
@@ -59,4 +60,64 @@ suite =
                             Err msg -> Expect.equal "Power level must be between 0 and 33" msg
 
             ]
+        , describe "Test receiving packets"
+            [
+                test "Deserialize real time reading" <|
+                    \_ ->
+                    let
+                        bytes = [ 240 , 14 , 225 , 226 , 0 , 71 , 24 , 184 , 48 , 100 , 38 , 123 , 194 , 1 , 12 , 36 , 241 , 3 , 1 , 0 , 11 ]
+                        fifo = Fifo.fromList bytes
+                        (resultPacket, _) = VH88.fifoBytesToPacket fifo
+                    in
+                    case resultPacket of
+                        Ok (Packet.Response (Command.CommandWithArgs (cmd, args))) ->
+                            Expect.equal (Command.HostComputerCardReading) cmd
+
+                        _ ->
+                            Expect.fail "Fail to parse packet"
+            ]
         ]
+
+{-- [
+        240,
+        14,
+        225,
+        226,
+        0,
+        71,
+        24,
+        184,
+        48,
+        100,
+        38,
+        123,
+        194,
+        1,
+        12,
+        36,
+        241,
+        3,
+        1,
+        0,
+        11
+    ]
+
+    [
+    240,
+    14,
+    225,
+    226,
+    0,
+    71,
+    24,
+    184,
+    48,
+    100,
+    38,
+    123,
+    194,
+    1,
+    12,
+    36
+]
+--}
