@@ -15,6 +15,7 @@ import VH88
 import Device exposing (Device, encodeDevice)
 import Fifo exposing (Fifo)
 import Time
+import Process
 import Task
 import Dict exposing (Dict)
 import Json.Decode as Decode
@@ -23,9 +24,8 @@ import VH88.Packet as Packet
 import Platform.Cmd as Cmd
 import BytesHelper
 import VH88.WorkingParameters as WorkingParameters
-import Html exposing (s)
 
--- STATE MANAGEMENT TYPES (moved from VH88)
+-- STATE MANAGEMENT TYPES 
 
 type alias PendingCommand = Dict String PendingCommandItem
 type alias PendingCommandItem =
@@ -73,6 +73,14 @@ removeErrorCommand dict cmd =
         key = Debug.toString cmd
     in
     Dict.remove key dict
+
+type EPC =
+    EPC (List Int)
+
+type alias Inventory =
+    { epc : EPC
+    , lastSeen : Time.Posix
+    }
 
 -- MODEL
 
@@ -142,7 +150,6 @@ type Msg
     | ReceiveSerialStatus (Maybe SerialStatus)
     | ReceiveDeviceList (List Device)
     | RequestDeviceList
-    | ReadWorkingParameters
     | SetEditWorkingParameters (Maybe WorkingParameters)
     | UpdateWorkingParameters WorkingParameters
     | SendCommand Packet 
@@ -201,13 +208,12 @@ processAllPackets packets model =
     case packets of
         [] ->
             (model, Cmd.none)
-        
-        packet :: remainingPackets ->
+        bunchOfPackets ->
             let
-                (newModel, cmd) = update (ReceivePacket packet) model
-                (finalModel, finalCmd) = processAllPackets remainingPackets newModel
+                batchProcessPackets = bunchOfPackets |> List.map (\packet -> message (ReceivePacket packet))
             in
-                (finalModel, Cmd.batch [cmd, finalCmd])
+                (model, Cmd.batch batchProcessPackets)
+
 
 decodeSerialStatus : List String -> Maybe SerialStatus
 decodeSerialStatus list =
@@ -252,29 +258,21 @@ update msg model =
             let
                 appendedBuffer = List.foldl Fifo.insert model.recvBuffer byteList
                 (packets, finalBuffer) = parseAllPackets appendedBuffer []
+
+                recvPacketCmds = packets |> List.map (\packet -> message (ReceivePacket packet))
             in
-                case packets of
-                    [] ->
-                        -- No complete packets found, keep the buffer unchanged
-                        ( { model | recvBuffer = finalBuffer }, Cmd.none )
-                    
-                    _ ->
-                        -- Process all packets sequentially
-                        processAllPackets (Debug.log "Recv packet" packets) { model | recvBuffer = finalBuffer }
+                ( { model | recvBuffer = finalBuffer }, Cmd.batch recvPacketCmds )
+
 
         ReceivePacket packet ->
             let
                 (updatedModel, newCmd) = case packet of
                         
                     Response (Command.CommandWithArgs (cmd, args)) ->
-                        -- we may have special handling for certain command
-                        let
-                            (responseModel, responseCmd) = update (ReceiveResponse (Command.CommandWithArgs (cmd, args))) model
-                        in
-                        ( { responseModel 
+                        ( { model 
                         | pendingCommand = removePendingCommand model.pendingCommand cmd 
                         , errorCommand = removeErrorCommand model.errorCommand cmd -- remove from error as well
-                        }, responseCmd )
+                        }, message (ReceiveResponse (Command.CommandWithArgs (cmd, args))) )
                         
                     
                     Error (Command.CommandWithArgs (cmd, params)) ->
@@ -305,6 +303,12 @@ update msg model =
                         maybeWorkingParams = BytesHelper.decodeListInt decoder args
                     in
                         ( { model | workingParameters = maybeWorkingParams, receivedData = "Working parameters updated." }, Cmd.none )
+                VH88.Command.CommandWithArgs (VH88.Command.HostComputerCardReading, args) ->
+                    let
+                        epc = EPC args
+                        
+                    in
+                        (model, Cmd.none)
                 VH88.Command.CommandWithArgs (unk, args) ->
                     ( { model | receivedData = "Received unknown response: " ++ (Debug.toString (unk, args)) }, Cmd.none )
         
@@ -321,8 +325,6 @@ update msg model =
             in
             ( { model | deviceList = devices , selectedDevice = firstDeviceCmd }, Cmd.none )
 
-        ReadWorkingParameters ->
-            ( model, sendPacket VH88.readWorkingParameters )
         SetEditWorkingParameters maybeParams ->
             ( { model | editWorkingParameters = maybeParams }, Cmd.none )
         UpdateWorkingParameters params ->
@@ -332,11 +334,13 @@ update msg model =
                 Just status ->
                     let
                         newModel = { model | serialStatus = status }
+                        cmd =
+                            if status == SerialConnected then
+                                sendPacket VH88.readWorkingParameters
+                            else
+                                Cmd.none
                     in
-                        if status == SerialConnected then
-                            update ReadWorkingParameters newModel
-                        else
-                            (newModel, Cmd.none)
+                        (newModel, cmd)
                 
                 Nothing ->
                     ( { model | receivedData = "Status: Unknown status received." }, Cmd.none )
@@ -374,6 +378,20 @@ addPendingCommandToModel model cmd =
 sendPacket : Packet -> Cmd Msg
 sendPacket packet =
     packet |> VH88.Packet.packetToBytes |> serialSend
+
+-- Tasks and Cmd helper
+-- See https://discourse.elm-lang.org/t/when-does-elm-not-update-the-ui/901/4
+
+message : msg -> Cmd msg
+message =
+    Task.perform identity << Task.succeed
+
+
+delay : Float -> msg -> Cmd msg
+delay sleepMs msg =
+    Process.sleep sleepMs
+        |> Task.andThen (always <| Task.succeed msg)
+        |> Task.perform identity
         
 
 -- SUBSCRIPTIONS
