@@ -36,9 +36,8 @@ Returns an error if the bytes are invalid
 
 -- Align the FIFO buffer to the next valid boot code
 
-type alias CommandResult = Result String (List Int)
 
-setRFIDPower : Int -> Result String (Packet)
+setRFIDPower : Int -> Result String Packet
 setRFIDPower powerLevel =
     if powerLevel < 0 || powerLevel > 33 then
         Err "Power level must be between 0 and 33"

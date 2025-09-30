@@ -7,8 +7,12 @@ import Html.Attributes exposing (..)
 import Html.Attributes as Attrs
 import Json.Decode
 import Json.Encode
-import VH88 exposing (Command(..), PowerLevel, Packet(..), Error(..), ErrorCode(..), powerLevel, minPower, maxPower, commandToBytes, fifoBytesToPacket, errorCodeFromInt, errorCodeToString, cmdSetRFIDPower)
 import VH88.WorkingParameters exposing (WorkingParameters)
+import VH88.Command exposing (Command(..))
+import VH88.Packet exposing (Packet(..))
+import VH88.Error exposing (Error(..), ErrorCode(..), errorCodeFromInt, errorCodeToString)
+import VH88 exposing (setRFIDPower)
+
 import Device exposing (Device)
 import Device exposing (encodeDevice)
 import Fifo exposing (Fifo)
@@ -24,6 +28,8 @@ import Html.Events exposing (onMouseUp)
 import Html.Events exposing (onBlur)
 import Html.Events exposing (on)
 import Json.Decode as Decode
+import VH88.Command as Command
+import VH88.Packet as Packet
 
 -- STATE MANAGEMENT TYPES (moved from VH88)
 
@@ -108,12 +114,11 @@ type Msg
     = RequestPort
     | ReceiveData (List Int)
     | ReceivePacket Packet
-    | ReceiveResponse VH88.Response
+    | ReceiveResponse VH88.Command.CommandWithArgs
     | ReceiveSerialStatus (Maybe SerialStatus)
     | ReceiveDeviceList (List Device)
     | RequestDeviceList
-    | SendDummy
-    | SendCommand Command 
+    | SendCommand Packet 
     | IncrementCounter
     | DebugCmd String
     | DebugToggle Bool
@@ -135,7 +140,7 @@ Returns (list of packets, remaining buffer)
 -}
 parseAllPackets : Fifo Int -> List Packet -> (List Packet, Fifo Int)
 parseAllPackets buffer accumulator =
-    case fifoBytesToPacket buffer of
+    case VH88.fifoBytesToPacket buffer of
         (Ok packet, remainingBuffer) ->
             -- Found a packet, continue parsing
             parseAllPackets remainingBuffer (packet :: accumulator)
@@ -247,29 +252,9 @@ update msg model =
                 ( { updatedModel | receivedData = "Received valid packet with contents: " ++ (Debug.toString packet) }, newCmd )
 
         ReceiveResponse commandData ->
-            let
-                a = 1
-                
-            in
-                case commandData.command of
-                    a -> (model, Cmd.none) -- For other commands, no special handling yet
-                    _ -> (model, Cmd.none) -- For other commands, no special handling yet
+            -- Todo: do something
+            (model, Cmd.none)
         
-        SendDummy ->
-            case powerLevel 5 of
-                Ok validPower ->
-                    case commandToBytes (SetRfidPower validPower) of
-                        Ok bytesToSend ->
-                            let 
-                                pendingCommand = addPendingCommandToModel model cmdSetRFIDPower 
-                            in
-                                ( { model | pendingCommand = pendingCommand }, serialSend bytesToSend )
-                        
-                        Err errorMsg ->
-                            ( { model | receivedData = "Command error: " ++ errorMsg }, Cmd.none )
-                
-                Err errorMsg ->
-                    ( { model | receivedData = "Power level error: " ++ errorMsg }, Cmd.none )
         RequestDeviceList ->
             ( model, requestDeviceList () )
         ReceiveDeviceList devices ->
@@ -314,19 +299,30 @@ update msg model =
             ( { model | showDebug = isChecked }, Cmd.none )
         Tick newTime ->
             ( { model | time = newTime }, Cmd.none)
-        SendCommand command ->
-            case command of 
-                SetRfidPower powerLevelValue ->
-                    case commandToBytes command of
-                        Ok cmdBytes ->
-                            let
-                                pendingCommand = addPendingCommandToModel model cmdSetRFIDPower
-                            in
-                                ( { model | pendingCommand = pendingCommand }, serialSend cmdBytes )
+        SendCommand packet ->
+            let
+                serialSendCmd = VH88.Packet.packetToBytes packet |> serialSend 
+                (cmd, _) = Packet.packetContents packet
+                cmdAsInt = Command.commandToInt cmd
+                pendingCommand = addPendingCommandToModel model cmdAsInt
+
+            in
+                ( { model | pendingCommand = pendingCommand }, serialSendCmd)
+
+            -- Debug.todo "A"
+
+            -- case command of 
+            --     SetRfidPower powerLevelValue ->
+            --         case commandToBytes command of
+            --             Ok cmdBytes ->
+            --                 let
+            --                     pendingCommand = addPendingCommandToModel model cmdSetRFIDPower
+            --                 in
+            --                     ( { model | pendingCommand = pendingCommand }, serialSend cmdBytes )
                 
-                        Err errorMsg ->
-                            ( { model | receivedData = "Command error: " ++ errorMsg }, Cmd.none )
-                _ -> Debug.todo "Implement other commands as needed"
+            --             Err errorMsg ->
+            --                 ( { model | receivedData = "Command error: " ++ errorMsg }, Cmd.none )
+            --     _ -> Debug.todo "Implement other commands as needed"
         SetPowerLevel powerLevel ->
             ( { model | powerLevel = powerLevel }, Cmd.none )
 
@@ -362,7 +358,6 @@ view : Model -> Html Msg
 view model =
     div [class "bg-teal-900 flex flex-col min-h-screen text-white p-4"]
         [ div [] [button [ onClick RequestPort ] [ text "Connect to Serial Port" ]]
-        , div [] [button [ onClick SendDummy] [text "Send Dummy Command"]]
         , div [] [ input [ placeholder "Enter text..." ] [] ]
         , div [] [ text <| "Received: " ++ model.receivedData ]
         , div [] [ text <| "Counter: " ++ String.fromInt (model.counter) ]
@@ -409,15 +404,20 @@ viewPanelConnection model =
 viewPanelRfidPower : Model -> Html Msg
 viewPanelRfidPower model =
     let
-        powerLevelCommand = 
-            case powerLevel model.powerLevel of
-                Ok validPower -> SendCommand (SetRfidPower validPower)
-                Err _ -> SendCommand (SetRfidPower minPower) -- fallback to min power
-    in
-    viewPanel ("Power level: " ++ (String.fromInt model.powerLevel))
-    [ input [type_ "range", Attrs.min "0", Attrs.max "33", Attrs.value (String.fromInt model.powerLevel), on "pointerup" (Decode.succeed powerLevelCommand), onInput (SetPowerLevel << Maybe.withDefault 0 << String.toInt)] []
+        powerLevelCommand = (VH88.setRFIDPower model.powerLevel)
+                          |> Result.toMaybe
+                          |> Maybe.map SendCommand
 
-    ]
+        onpointerup = 
+            case powerLevelCommand of
+                Just cmd -> [on "pointerup" (Decode.succeed cmd)]
+                Nothing -> []
+
+    in
+        viewPanel ("Power level: " ++ (String.fromInt model.powerLevel))
+        [ input (onpointerup ++ [type_ "range", Attrs.min "0", Attrs.max "33", Attrs.value (String.fromInt model.powerLevel), onInput (SetPowerLevel << Maybe.withDefault 0 << String.toInt)]) []
+
+        ]
 
 htmlIf : Bool -> Html msg -> Html msg -> Html msg
 htmlIf condition htmlTrue htmlFalse  =
@@ -433,7 +433,6 @@ viewDebugCmd model =
         [ button [ onClick (ReceiveDeviceList [Device "Device A" "00:00:00:00:00:01", Device "Device B" "00:00:00:00:00:02"]) ] [text "Debug get device list"]
         , button [ onClick (ReceiveData [0xf0, 0x03, 0x04, 0x00, 0x09] ) ] [text "Receive successful cmd 0x4"]
         , button [ onClick (ReceiveData [0xf4, 0x03, 0x04, 0x11, 0xf4] ) ] [text "Receive error cmd 0x4"]
-        , button [ onClick (SendDummy ) ] [text "Send "]
         ]
     , viewPanel "Debug Info"
         [ viewPendingCommands model
