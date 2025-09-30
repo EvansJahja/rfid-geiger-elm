@@ -8,6 +8,7 @@ import Html.Attributes as Attrs
 import Json.Decode
 import Json.Encode
 import VH88 exposing (Command(..), PowerLevel, Packet(..), Error(..), ErrorCode(..), powerLevel, minPower, maxPower, commandToBytes, fifoBytesToPacket, errorCodeFromInt, errorCodeToString, cmdSetRFIDPower)
+import VH88.WorkingParameters exposing (WorkingParameters)
 import Device exposing (Device)
 import Device exposing (encodeDevice)
 import Fifo exposing (Fifo)
@@ -75,6 +76,7 @@ type alias Model =
     , errorCommand : ErrorCommand
     , showDebug : Bool
     , powerLevel : Int
+    , workingParameters : Maybe WorkingParameters
     }
 
 
@@ -91,6 +93,7 @@ init _ =
         , errorCommand = newErrorCommand
         , showDebug = False
         , powerLevel = 0
+        , workingParameters = Nothing
          }
     , Cmd.batch 
         [ registerListener ()
@@ -105,6 +108,7 @@ type Msg
     = RequestPort
     | ReceiveData (List Int)
     | ReceivePacket Packet
+    | ReceiveResponse VH88.Response
     | ReceiveSerialStatus (Maybe SerialStatus)
     | ReceiveDeviceList (List Device)
     | RequestDeviceList
@@ -215,26 +219,41 @@ update msg model =
 
         ReceivePacket packet ->
             let
-                updatedModel = case packet of
-                    Response commandData ->
+                (updatedModel, newCmd) = case packet of
+                    Response resp ->
+                        -- we may have special handling for certain command
+                        update (ReceiveResponse resp)
                         { model 
-                        | pendingCommand = removePendingCommand model.pendingCommand commandData.command 
-                        , errorCommand = removeErrorCommand model.errorCommand commandData.command -- remove from error as well
+                        | pendingCommand = removePendingCommand model.pendingCommand resp.command 
+                        , errorCommand = removeErrorCommand model.errorCommand resp.command -- remove from error as well
                         }
+                        
                     
                     Error commandData ->
                         let
                             errorCode = List.head commandData.params |> Maybe.withDefault 0x20 |> errorCodeFromInt
                         in
-                            { model 
-                            | pendingCommand = removePendingCommand model.pendingCommand commandData.command 
-                            , errorCommand = addErrorCommand model.errorCommand model.time commandData.command errorCode
-                            }
+                            (
+                                { model 
+                                | pendingCommand = removePendingCommand model.pendingCommand commandData.command 
+                                , errorCommand = addErrorCommand model.errorCommand model.time commandData.command errorCode
+                                }
+                                , Cmd.none
+                            )
 
                     Status _ ->
-                        model  -- Don't remove pending commands for status packets
+                        (model, Cmd.none)  -- Don't remove pending commands for status packets
             in
-                ( { updatedModel | receivedData = "Received valid packet with contents: " ++ (Debug.toString packet) }, Cmd.none )
+                ( { updatedModel | receivedData = "Received valid packet with contents: " ++ (Debug.toString packet) }, newCmd )
+
+        ReceiveResponse commandData ->
+            let
+                a = 1
+                
+            in
+                case commandData.command of
+                    a -> (model, Cmd.none) -- For other commands, no special handling yet
+                    _ -> (model, Cmd.none) -- For other commands, no special handling yet
         
         SendDummy ->
             case powerLevel 5 of

@@ -4,6 +4,9 @@ import Test exposing (..)
 import Expect
 import VH88 
 import Fifo exposing (Fifo)
+import VH88.Command
+import VH88.Command as Command
+import VH88.Packet as Packet
 
 suite : Test
 suite =
@@ -44,23 +47,18 @@ suite =
             [
                 test "Serialize SetRFIDPower 5" <|
                     \_ ->
-                    let
-                        powerResult = case VH88.powerLevel 5 of
-                            Ok p -> p
-                            Err msg -> Debug.todo msg
-                    in
-                        case VH88.commandToBytes (VH88.SetRfidPower powerResult) of
-                            Ok commandBytes ->
-                                Expect.equal [0x40, 0x03, 0x04, 0x05, 0xb4] commandBytes
-                            
-                            Err _ ->
-                                Expect.fail "Command should succeed"
+                    case VH88.setRFIDPower 5 |> Result.map Packet.packetToBytes of
+                        Ok commandBytes ->
+                            Expect.equal [0x40, 0x03, 0x04, 0x05, 0xb4] commandBytes
+                        
+                        Err _ ->
+                            Expect.fail "Command should succeed"
                             
                 , test "SetRFIDPower validation - invalid power" <|
                     \_ ->
-                    case VH88.powerLevel 50 of
+                    case VH88.setRFIDPower 50 of
                             Ok _ -> Expect.fail "Should reject power > 33"
-                            Err msg -> Expect.equal "Power level must be between 0 and 33, got 50" msg
+                            Err msg -> Expect.equal "Power level must be between 0 and 33" msg
 
             ]
         ]

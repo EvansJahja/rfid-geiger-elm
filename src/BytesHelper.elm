@@ -3,8 +3,8 @@ import Bytes
 import Bytes.Decode
 import Bytes.Encode
 
-encodeIntList : List Int -> Bytes.Bytes
-encodeIntList xs =
+listIntToBytes : List Int -> Bytes.Bytes
+listIntToBytes xs =
     let
         encodedInts = List.map (Bytes.Encode.unsignedInt8 ) xs
         encoder =
@@ -13,8 +13,8 @@ encodeIntList xs =
     Bytes.Encode.encode encoder
 
 
-decodeIntList : Bytes.Bytes -> Maybe (List Int)
-decodeIntList bytes =
+bytesToListInt : Bytes.Bytes -> List Int
+bytesToListInt bytes =
     let
         decoder = 
             Bytes.Decode.loop (Bytes.width bytes, []) (\(n, acc) ->
@@ -27,5 +27,14 @@ decodeIntList bytes =
 
     in
         Bytes.Decode.decode decoder bytes
+        |> Maybe.withDefault []
 
-    
+
+
+decodeListInt : Bytes.Decode.Decoder a -> List Int -> Maybe a
+decodeListInt dec listInt =
+    let
+        listIntAsBytes = listIntToBytes listInt
+        
+    in
+        Bytes.Decode.decode dec listIntAsBytes

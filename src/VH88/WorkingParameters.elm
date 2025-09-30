@@ -6,8 +6,6 @@ import Bytes.Decode as Decode
 import Bytes.Decode
 import Bytes.Encode as Encode
 import Bytes
-import VH88 exposing (PowerLevel)
-import VH88 exposing (powerLevelToEncoder)
 
 
 type alias WorkingParameters =
@@ -16,7 +14,7 @@ type alias WorkingParameters =
     , realTimeOutput : RealTimeOutput
     , minimumCarrierFrequency : Int
     , maximumCarrierFrequency : Int
-    , transmitPower : PowerLevel
+    , transmitPower : Int
     , hwVersion : Int
     , moduleType : ModuleType
     , workingMode : WorkingMode
@@ -54,7 +52,7 @@ toEncoder workingParameters =
         , Encode.unsignedInt8 workingParameters.res4
         , Encode.unsignedInt8 workingParameters.minimumCarrierFrequency
         , Encode.unsignedInt8 workingParameters.maximumCarrierFrequency
-        , powerLevelToEncoder workingParameters.transmitPower
+        , Encode.unsignedInt8 workingParameters.transmitPower
         , Encode.unsignedInt32 Bytes.BE workingParameters.hwVersion
         , Encode.unsignedInt8 workingParameters.res12
         , Encode.unsignedInt8 workingParameters.res13
@@ -145,7 +143,7 @@ decodeFirstBlock =
 type alias SecondBlock = 
     { minCarrierFreq : Int
     , maxCarrierFreq : Int
-    , transmitPower : PowerLevel
+    , transmitPower : Int
     , hwVersion : Int
     , res12_18 : Res12_18
     }
@@ -156,7 +154,7 @@ decodeSecondBlock =
         SecondBlock
         (Decode.unsignedInt8)
         (Decode.unsignedInt8)
-        VH88.powerLevelDecoder
+        (Decode.unsignedInt8)
         (Decode.unsignedInt32 Bytes.BE)
         decodeRes12_18
 
