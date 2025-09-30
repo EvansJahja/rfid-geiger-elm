@@ -33,26 +33,32 @@ import VH88.Packet as Packet
 
 -- STATE MANAGEMENT TYPES (moved from VH88)
 
-type alias PendingCommand = Dict Int PendingCommandItem
+type alias PendingCommand = Dict String PendingCommandItem
 type alias PendingCommandItem =
-    { commandByte: Int
+    { command: Command
     , sentTime: Time.Posix
     }
 
 newPendingCommand : PendingCommand
 newPendingCommand = Dict.empty
 
-addPendingCommand :  PendingCommand -> Time.Posix -> Int -> PendingCommand
-addPendingCommand dict time cmdByte =
-    Dict.insert cmdByte { commandByte = cmdByte, sentTime = time } dict
+addPendingCommand :  PendingCommand -> Time.Posix -> Command -> PendingCommand
+addPendingCommand dict time cmd =
+    let
+        key = Debug.toString cmd
+    in
+    Dict.insert key { command = cmd, sentTime = time } dict
 
-removePendingCommand : PendingCommand -> Int -> PendingCommand
-removePendingCommand dict cmdByte =
-    Dict.remove cmdByte dict
+removePendingCommand : PendingCommand -> Command -> PendingCommand
+removePendingCommand dict cmd =
+    let
+        key = Debug.toString cmd
+    in
+    Dict.remove key dict
 
-type alias ErrorCommand = Dict Int PendingErrorItem
+type alias ErrorCommand = Dict String PendingErrorItem
 type alias PendingErrorItem =
-    { commandByte: Int
+    { command: Command
     , sentTime: Time.Posix
     , errorCode: ErrorCode
     }
@@ -60,13 +66,19 @@ type alias PendingErrorItem =
 newErrorCommand : ErrorCommand
 newErrorCommand = Dict.empty
 
-addErrorCommand :  ErrorCommand -> Time.Posix -> Int -> ErrorCode -> ErrorCommand
-addErrorCommand dict time cmdByte errCode =
-    Dict.insert cmdByte { commandByte = cmdByte, sentTime = time, errorCode = errCode } dict
+addErrorCommand :  ErrorCommand -> Time.Posix -> Command -> ErrorCode -> ErrorCommand
+addErrorCommand dict time cmd errCode =
+    let
+        key = Debug.toString cmd
+    in
+    Dict.insert key { command = cmd, sentTime = time, errorCode = errCode } dict
 
-removeErrorCommand : ErrorCommand -> Int -> ErrorCommand
-removeErrorCommand dict cmdByte =
-    Dict.remove cmdByte dict
+removeErrorCommand : ErrorCommand -> Command -> ErrorCommand
+removeErrorCommand dict cmd =
+    let
+        key = Debug.toString cmd
+    in
+    Dict.remove key dict
 
 -- MODEL
 
@@ -225,23 +237,29 @@ update msg model =
         ReceivePacket packet ->
             let
                 (updatedModel, newCmd) = case packet of
-                    Response resp ->
+                    Request _ ->
+                        -- Requests are outgoing, we shouldn't receive them
+                        (model, Cmd.none)
+                        
+                    Response (Command.CommandWithArgs (cmd, _)) ->
                         -- we may have special handling for certain command
-                        update (ReceiveResponse resp)
-                        { model 
-                        | pendingCommand = removePendingCommand model.pendingCommand resp.command 
-                        , errorCommand = removeErrorCommand model.errorCommand resp.command -- remove from error as well
-                        }
+                        let
+                            (responseModel, responseCmd) = update (ReceiveResponse (Command.CommandWithArgs (cmd, []))) model
+                        in
+                        ( { responseModel 
+                        | pendingCommand = removePendingCommand model.pendingCommand cmd 
+                        , errorCommand = removeErrorCommand model.errorCommand cmd -- remove from error as well
+                        }, responseCmd )
                         
                     
-                    Error commandData ->
+                    Error (Command.CommandWithArgs (cmd, params)) ->
                         let
-                            errorCode = List.head commandData.params |> Maybe.withDefault 0x20 |> errorCodeFromInt
+                            errorCode = List.head params |> Maybe.withDefault 0x20 |> errorCodeFromInt
                         in
                             (
                                 { model 
-                                | pendingCommand = removePendingCommand model.pendingCommand commandData.command 
-                                , errorCommand = addErrorCommand model.errorCommand model.time commandData.command errorCode
+                                | pendingCommand = removePendingCommand model.pendingCommand cmd 
+                                , errorCommand = addErrorCommand model.errorCommand model.time cmd errorCode
                                 }
                                 , Cmd.none
                             )
@@ -251,8 +269,8 @@ update msg model =
             in
                 ( { updatedModel | receivedData = "Received valid packet with contents: " ++ (Debug.toString packet) }, newCmd )
 
-        ReceiveResponse commandData ->
-            -- Todo: do something
+        ReceiveResponse _ ->
+            -- No-op for now
             (model, Cmd.none)
         
         RequestDeviceList ->
@@ -303,8 +321,7 @@ update msg model =
             let
                 serialSendCmd = VH88.Packet.packetToBytes packet |> serialSend 
                 (cmd, _) = Packet.packetContents packet
-                cmdAsInt = Command.commandToInt cmd
-                pendingCommand = addPendingCommandToModel model cmdAsInt
+                pendingCommand = addPendingCommandToModel model cmd
 
             in
                 ( { model | pendingCommand = pendingCommand }, serialSendCmd)
@@ -328,9 +345,9 @@ update msg model =
 
                 
 
-addPendingCommandToModel : Model -> Int -> PendingCommand
-addPendingCommandToModel model cmdByte =
-    addPendingCommand model.pendingCommand model.time cmdByte
+addPendingCommandToModel : Model -> Command -> PendingCommand
+addPendingCommandToModel model cmd =
+    addPendingCommand model.pendingCommand model.time cmd
         
 
 -- SUBSCRIPTIONS
@@ -347,7 +364,7 @@ subscriptions _ =
             case Json.Decode.decodeValue Device.decodeDeviceList json of
                 Ok devices -> 
                     ReceiveDeviceList devices
-                Err err ->
+                Err _ ->
                     Debug.todo "Implement error handling for device list decoding"
           )
         ]
@@ -449,7 +466,7 @@ viewPendingCommands model =
             (Dict.values model.pendingCommand
                 |> List.map
                     (\cmd ->
-                        Html.li [] [ text ("Command Byte: " ++ String.fromInt cmd.commandByte ++ ", Pending for: " ++ humanTimeDifference cmd.sentTime model.time) ]
+                        Html.li [] [ text ("Command: " ++ Debug.toString cmd.command ++ ", Pending for: " ++ humanTimeDifference cmd.sentTime model.time) ]
                     )
             )
         ]
@@ -462,7 +479,7 @@ viewErrorCommands model =
             (Dict.values model.errorCommand
                 |> List.map
                     (\cmd ->
-                        Html.li [] [ text ("Command Byte: " ++ String.fromInt cmd.commandByte ++ ", Error code: " ++ errorCodeToString cmd.errorCode ++ ", Error at: " ++ humanTimeDifference cmd.sentTime model.time ++ " ago" )]
+                        Html.li [] [ text ("Command: " ++ Debug.toString cmd.command ++ ", Error code: " ++ errorCodeToString cmd.errorCode ++ ", Error at: " ++ humanTimeDifference cmd.sentTime model.time ++ " ago" )]
                     )
             )
         ]
