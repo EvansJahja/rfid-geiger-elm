@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { CapacitorBluetoothSerial } from 'capacitor-bluetooth-serial';
+import { Camera } from '@capacitor/camera';
 import { Elm } from './Main.elm';
 
 const platform = Capacitor.getPlatform();
@@ -59,4 +60,13 @@ app.ports.serialSend.subscribe(async function(data) {
         console.error("Error sending data:", error);
         app.ports.serialStatus.send(["serial_error", "Send failed: " + error.message]);
     }
+});
+
+app.ports.takePicture.subscribe(async function() {
+    const image = await Camera.getPhoto({
+        allowEditing: false,
+        source: 'CAMERA',
+        resultType: 'dataUrl'
+    });
+    app.ports.pictureResult.send(image.dataUrl);
 });

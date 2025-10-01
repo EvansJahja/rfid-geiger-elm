@@ -114,6 +114,8 @@ type alias Model =
     , epcFilter : Set EPC
     }
 
+type alias DataUrl = String
+
 
 init : (Json.Decode.Value) -> ( Model, Cmd Msg )
 init flags =
@@ -157,6 +159,7 @@ init flags =
 
 -- MESSAGES
 
+
 type Msg
     = ReceiveData (List Int)
     | ReceivePacket Packet
@@ -176,6 +179,8 @@ type Msg
     | SetPowerLevel Int
     | ClearInventory
     | EPCFilter EPCFilterOperation
+    | TakePicture
+    | PictureResult DataUrl
 
 type EPCFilterOperation = Add EPC | Remove EPC
 
@@ -265,6 +270,10 @@ port serialData : (List Int -> msg) -> Sub msg
 port serialStatus : (List String -> msg) -> Sub msg
 
 port deviceList : (Json.Decode.Value -> msg) -> Sub msg
+
+port takePicture : () -> Cmd msg
+
+port pictureResult : (String -> msg) -> Sub msg
 
 
 -- UPDATE
@@ -404,6 +413,10 @@ update msg model =
                     ( { model | epcFilter = Set.insert epc model.epcFilter }, Cmd.none )
                 Remove epc ->
                     ( { model | epcFilter = Set.remove epc model.epcFilter }, Cmd.none )
+        TakePicture ->
+            ( model, takePicture () )
+        PictureResult dataUrl ->
+            ( { model | receivedData = "Received picture data URL of length: " ++ String.fromInt (String.length dataUrl) }, Cmd.none )
 
                 
 
@@ -447,6 +460,7 @@ subscriptions _ =
                 Err _ ->
                     Debug.todo "Implement error handling for device list decoding"
           )
+        , pictureResult PictureResult
         ]
 
 -- VIEW
@@ -455,6 +469,7 @@ view : Model -> Html Msg
 view model =
     div [class "bg-teal-900 flex flex-col min-h-screen text-white p-4"]
         [ Html.p [] [text ("Platform: " ++ model.platform)]
+        , div [] [button [ onClick TakePicture ] [ text "Take picture" ]]
         , div [] [button [ onClick RequestDeviceList ] [ text "Connect to Serial Port" ]]
         , div [] [ input [ placeholder "Enter text..." ] [] ]
         , div [] [ text <| "Received: " ++ model.receivedData ]
