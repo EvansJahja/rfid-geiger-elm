@@ -1,10 +1,12 @@
 port module Main exposing (..)
 
 import Browser
-import Html exposing (Html, button, div, input, text, select, option, h1, ul, label, p)
+import Html exposing (Html, button, div, input, text, select, option, h1, ul, li, label, p)
 import Html.Events exposing (onClick, onInput, onCheck, on)
 import Html.Attributes exposing (..)
 import Html.Attributes as Attrs
+import Svg exposing (svg, circle, line, polyline, path, rect)
+import Svg.Attributes as SvgAttrs
 import Json.Decode
 import Json.Encode
 import VH88.WorkingParameters exposing (WorkingParameters)
@@ -465,10 +467,155 @@ subscriptions _ =
 
 -- VIEW
 
+{--
+<div class="dock">
+  <button>
+    <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="currentColor" stroke-linejoin="miter" stroke-linecap="butt"><polyline points="1 11 12 2 23 11" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><path d="m5,13v7c0,1.105.895,2,2,2h10c1.105,0,2-.895,2-2v-7" fill="none" stroke="currentColor" stroke-linecap="square" stroke-miterlimit="10" stroke-width="2"></path><line x1="12" y1="22" x2="12" y2="18" fill="none" stroke="currentColor" stroke-linecap="square" stroke-miterlimit="10" stroke-width="2"></line></g></svg>
+    <span class="dock-label">Home</span>
+  </button>
+  
+  <button class="dock-active">
+    <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="currentColor" stroke-linejoin="miter" stroke-linecap="butt"><polyline points="3 14 9 14 9 17 15 17 15 14 21 14" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><rect x="3" y="3" width="18" height="18" rx="2" ry="2" fill="none" stroke="currentColor" stroke-linecap="square" stroke-miterlimit="10" stroke-width="2"></rect></g></svg>
+    <span class="dock-label">Inbox</span>
+  </button>
+  
+  <button>
+    <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="currentColor" stroke-linejoin="miter" stroke-linecap="butt"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-linecap="square" stroke-miterlimit="10" stroke-width="2"></circle><path d="m22,13.25v-2.5l-2.318-.966c-.167-.581-.395-1.135-.682-1.654l.954-2.318-1.768-1.768-2.318.954c-.518-.287-1.073-.515-1.654-.682l-.966-2.318h-2.5l-.966,2.318c-.581.167-1.135.395-1.654.682l-2.318-.954-1.768,1.768.954,2.318c-.287.518-.515,1.073-.682,1.654l-2.318.966v2.5l2.318.966c.167.581.395,1.135.682,1.654l-.954,2.318,1.768,1.768,2.318-.954c.518.287,1.073.515,1.654.682l.966,2.318h2.5l.966-2.318c.581-.167,1.135-.395,1.654-.682l2.318.954,1.768-1.768-.954-2.318c.287-.518.515-1.073.682-1.654l2.318-.966Z" fill="none" stroke="currentColor" stroke-linecap="square" stroke-miterlimit="10" stroke-width="2"></path></g></svg>
+    <span class="dock-label">Settings</span>
+  </button>
+</div>
+
+--}
+
+viewDock : Model -> Html Msg
+viewDock model = 
+    div [ class "dock " ]
+        [ button [ ]
+            [   svg [ SvgAttrs.class "size-[1.2em]",  SvgAttrs.viewBox "0 0 24 24" ]
+                [ Svg.polyline [ SvgAttrs.points "1 11 12 2 23 11", SvgAttrs.fill "none", SvgAttrs.stroke "currentColor", SvgAttrs.strokeMiterlimit "10", SvgAttrs.strokeWidth "2" ] []
+                , Svg.path [ SvgAttrs.d "m5,13v7c0,1.105.895,2,2,2h10c1.105,0,2-.895,2-2v-7", SvgAttrs.fill "none", SvgAttrs.stroke "currentColor", SvgAttrs.strokeLinecap "square", SvgAttrs.strokeMiterlimit "10", SvgAttrs.strokeWidth "2" ] []
+                , Svg.line [ SvgAttrs.x1 "12", SvgAttrs.y1 "22", SvgAttrs.x2 "12", SvgAttrs.y2 "18", SvgAttrs.fill "none", SvgAttrs.stroke "currentColor", SvgAttrs.strokeLinecap "square", SvgAttrs.strokeMiterlimit "10", SvgAttrs.strokeWidth "2" ] []
+                ]
+            ,   span [ class "dock-label" ] [ text "Home" ]
+            ]
+        , button [ class "dock-active" ]
+            [ svg [ SvgAttrs.class "size-[1.2em]",  SvgAttrs.viewBox "0 0 24 24" ]
+                [ Svg.polyline [ SvgAttrs.points "3 14 9 14 9 17 15 17 15 14 21 14", SvgAttrs.fill "none", SvgAttrs.stroke "currentColor", SvgAttrs.strokeMiterlimit "10", SvgAttrs.strokeWidth "2" ] []
+                , Svg.rect [ SvgAttrs.x "3", SvgAttrs.y "3", SvgAttrs.width "18", SvgAttrs.height "18", SvgAttrs.rx "2", SvgAttrs.ry "2", SvgAttrs.fill "none", SvgAttrs.stroke "currentColor", SvgAttrs.strokeLinecap "square", SvgAttrs.strokeMiterlimit "10", SvgAttrs.strokeWidth "2" ] []
+                ]
+            , span [ class "dock-label" ] [ text "Inbox" ]
+            ]
+        , button []
+            [   svg [ SvgAttrs.class "size-[1.2em]",  SvgAttrs.viewBox "0 0 24 24" ]
+                [ Svg.circle [ SvgAttrs.cx "12", SvgAttrs.cy "12", SvgAttrs.r "3", SvgAttrs.fill "none", SvgAttrs.stroke "currentColor", SvgAttrs.strokeLinecap "square", SvgAttrs.strokeMiterlimit "10", SvgAttrs.strokeWidth "2" ] []
+                , Svg.path [ SvgAttrs.d "m22,13.25v-2.5l-2.318-.966c-.167-.581-.395-1.135-.682-1.654l.954-2.318-1.768-1.768-2.318.954c-.518-.287-1.073-.515-1.654-.682l-.966-2.318h-2.5l-.966,2.318c-.581.167-1.135.395-1.654.682l-2.318-.954-1.768,1.768.954,2.318c-.287.518-.515,1.073-.682,1.654l-2.318.966v2.5l2.318.966c.167.581.395,1.135.682,1.654l-.954,2.318,1.768,1.768,2.318-.954c.518.287,1.073.515,1.654.682l.966,2.318h2.5l.966-2.318c.581-.167,1.135-.395,1.654-.682l2.318.954,1.768-1.768-.954-2.318c.287-.518.515-1.073+.682-1.654l2.318-.966Z", SvgAttrs.fill "none", SvgAttrs.stroke "currentColor", SvgAttrs.strokeLinecap "square", SvgAttrs.strokeMiterlimit "10", SvgAttrs.strokeWidth "2" ] []
+                ]
+            ,   span [ class "dock-label" ] [ text "Settings" ]
+            ]
+        ]
+
+
+viewNavbar : Model -> Html Msg
+viewNavbar model =
+    div [ Attrs.attribute "role" "tablist",  class "tabs tabs-border bg-base-100 shadow-sm justify-center" ]
+        [ Html.a [ Attrs.attribute "role" "tab", class "text-xs tab tab-active" ] [ text "Categories" ]
+        , Html.a [ Attrs.attribute "role" "tab", class "text-xs tab" ] [ text "Location" ]
+        , Html.a [ Attrs.attribute "role" "tab", class "text-xs tab" ] [ text "Ownership" ]
+        , Html.a [ Attrs.attribute "role" "tab", class "text-xs tab" ] [ text "All" ]
+        ]
+
+{--
+<ul class="list bg-base-100 rounded-box shadow-md">
+  
+  <li class="p-4 pb-2 text-xs opacity-60 tracking-wide">Most played songs this week</li>
+  
+  <li class="list-row">
+    <div><img class="size-10 rounded-box" src="https://img.daisyui.com/images/profile/demo/1@94.webp"/></div>
+    <div>
+      <div>Dio Lupa</div>
+      <div class="text-xs uppercase font-semibold opacity-60">Remaining Reason</div>
+    </div>
+    <button class="btn btn-square btn-ghost">
+      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M6 3L20 12 6 21 6 3z"></path></g></svg>
+    </button>
+    <button class="btn btn-square btn-ghost">
+      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></g></svg>
+    </button>
+  </li>
+  
+  <li class="list-row">
+    <div><img class="size-10 rounded-box" src="https://img.daisyui.com/images/profile/demo/4@94.webp"/></div>
+    <div>
+      <div>Ellie Beilish</div>
+      <div class="text-xs uppercase font-semibold opacity-60">Bears of a fever</div>
+    </div>
+    <button class="btn btn-square btn-ghost">
+      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M6 3L20 12 6 21 6 3z"></path></g></svg>
+    </button>
+    <button class="btn btn-square btn-ghost">
+      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></g></svg>
+    </button>
+  </li>
+  
+  <li class="list-row">
+    <div><img class="size-10 rounded-box" src="https://img.daisyui.com/images/profile/demo/3@94.webp"/></div>
+    <div>
+      <div>Sabrino Gardener</div>
+      <div class="text-xs uppercase font-semibold opacity-60">Cappuccino</div>
+    </div>
+    <button class="btn btn-square btn-ghost">
+      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M6 3L20 12 6 21 6 3z"></path></g></svg>
+    </button>
+    <button class="btn btn-square btn-ghost">
+      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></g></svg>
+    </button>
+  </li>
+  
+</ul>
+
+--}
+
+listItem : String -> String -> Html Msg
+listItem name subtitle =
+    li [ class "list-row" ]
+        [ div [] [ Html.img [ class "size-10 rounded-box", src "https://img.daisyui.com/images/profile/demo/1@94.webp" ] [] ]
+        , div [ class "flex justify-between"]
+            [ div [] [ text name ]
+            , div [ class "text-xs uppercase font-semibold opacity-60" ] [ text subtitle ]
+            ]
+        ]
+
+viewList : Model -> Html Msg
+viewList model = 
+    ul [ class "list bg-base-100 rounded-box shadow-md" ]
+        [ listItem "Clays" "3"
+        , listItem "Nail Supplies" "20"
+        , listItem "Crotchet" "100+"
+        ]
+
+viewHeading : Html Msg
+viewHeading =
+    div
+        [ class "flex justify-center w-full" ] -- Utility class to center content horizontally
+        [ h1
+            [ class "text-4xl text-neutral font-extrabold text-base-content p-4" ] -- Stylize the h1
+            [ text "Inventory." ]
+        ]
+
 view : Model -> Html Msg
 view model =
+    div[ class "m-4 flex flex-col gap-8 " ]
+        [ viewHeading
+        , viewNavbar model
+        , viewList model
+        ]
+
+
+
+view2 model =
     div [class "bg-teal-900 flex flex-col min-h-screen text-white p-4"]
-        [ Html.p [] [text ("Platform: " ++ model.platform)]
+        [ p [] [text ("Platform: " ++ model.platform)]
+        , button [class "btn btn-primary"] [ text "DaisyUI Button"]
         , div [] [button [ onClick TakePicture ] [ text "Take picture" ]]
         , div [] [button [ onClick RequestDeviceList ] [ text "Connect to Serial Port" ]]
         , div [] [ input [ placeholder "Enter text..." ] [] ]
