@@ -94,6 +94,11 @@ type alias InventoryItem =
 type alias Inventory = Dict EPC InventoryItem
 
 
+type Page = PageCategories
+          | PageLocation
+          | PageSettings
+          | PageTODO
+
 -- MODEL
 
 type alias Model =
@@ -114,6 +119,8 @@ type alias Model =
     , platform : String
     , inventory : Inventory
     , epcFilter : Set EPC
+
+    , page : Page
     }
 
 type alias DataUrl = String
@@ -155,6 +162,7 @@ init flags =
             , platform = platform
             , inventory = Dict.empty
             , epcFilter = Set.empty
+            , page = PageSettings
             }
         , initCmd
         )
@@ -183,6 +191,7 @@ type Msg
     | EPCFilter EPCFilterOperation
     | TakePicture
     | PictureResult DataUrl
+    | PageChange Page
 
 type EPCFilterOperation = Add EPC | Remove EPC
 
@@ -419,6 +428,8 @@ update msg model =
             ( model, takePicture () )
         PictureResult dataUrl ->
             ( { model | receivedData = "Received picture data URL of length: " ++ String.fromInt (String.length dataUrl) }, Cmd.none )
+        PageChange newPage ->
+            ( { model | page = newPage }, Cmd.none )
 
                 
 
@@ -517,63 +528,27 @@ viewDock model =
 
 viewNavbar : Model -> Html Msg
 viewNavbar model =
-    div [ Attrs.attribute "role" "tablist",  class "tabs tabs-border bg-base-100 shadow-sm justify-center" ]
-        [ Html.a [ Attrs.attribute "role" "tab", class "text-xs tab tab-active" ] [ text "Categories" ]
-        , Html.a [ Attrs.attribute "role" "tab", class "text-xs tab" ] [ text "Location" ]
-        , Html.a [ Attrs.attribute "role" "tab", class "text-xs tab" ] [ text "Ownership" ]
-        , Html.a [ Attrs.attribute "role" "tab", class "text-xs tab" ] [ text "All" ]
+    let
+        isActive page =
+            if model.page == page then
+                "tab-active "
+            else
+                ""
+
+
+        link : Page -> String -> Html Msg
+        link page label =
+            Html.a [ Attrs.attribute "role" "tab", class (isActive page ++ "text-xs tab "), onClick (PageChange page) ] [ text label ]
+    in
+    
+    div [ Attrs.attribute "role" "tablist",  class " tabs tabs-border shadow-sm justify-center pb-8" ]
+        [ link PageCategories "Categories"
+        , link PageLocation "Location"
+        , link PageSettings "Settings"
+        , Html.a [ Attrs.attribute "role" "tab", class (isActive PageTODO ++ "text-xs tab") ] [ text "Ownership" ]
+        , Html.a [ Attrs.attribute "role" "tab", class (isActive PageTODO ++ "text-xs tab") ] [ text "All" ]
         ]
 
-{--
-<ul class="list bg-base-100 rounded-box shadow-md">
-  
-  <li class="p-4 pb-2 text-xs opacity-60 tracking-wide">Most played songs this week</li>
-  
-  <li class="list-row">
-    <div><img class="size-10 rounded-box" src="https://img.daisyui.com/images/profile/demo/1@94.webp"/></div>
-    <div>
-      <div>Dio Lupa</div>
-      <div class="text-xs uppercase font-semibold opacity-60">Remaining Reason</div>
-    </div>
-    <button class="btn btn-square btn-ghost">
-      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M6 3L20 12 6 21 6 3z"></path></g></svg>
-    </button>
-    <button class="btn btn-square btn-ghost">
-      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></g></svg>
-    </button>
-  </li>
-  
-  <li class="list-row">
-    <div><img class="size-10 rounded-box" src="https://img.daisyui.com/images/profile/demo/4@94.webp"/></div>
-    <div>
-      <div>Ellie Beilish</div>
-      <div class="text-xs uppercase font-semibold opacity-60">Bears of a fever</div>
-    </div>
-    <button class="btn btn-square btn-ghost">
-      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M6 3L20 12 6 21 6 3z"></path></g></svg>
-    </button>
-    <button class="btn btn-square btn-ghost">
-      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></g></svg>
-    </button>
-  </li>
-  
-  <li class="list-row">
-    <div><img class="size-10 rounded-box" src="https://img.daisyui.com/images/profile/demo/3@94.webp"/></div>
-    <div>
-      <div>Sabrino Gardener</div>
-      <div class="text-xs uppercase font-semibold opacity-60">Cappuccino</div>
-    </div>
-    <button class="btn btn-square btn-ghost">
-      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M6 3L20 12 6 21 6 3z"></path></g></svg>
-    </button>
-    <button class="btn btn-square btn-ghost">
-      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></g></svg>
-    </button>
-  </li>
-  
-</ul>
-
---}
 
 listItem : String -> String -> Html Msg
 listItem name subtitle =
@@ -596,35 +571,66 @@ viewList model =
 viewHeading : Html Msg
 viewHeading =
     div
-        [ class "flex justify-center w-full" ] -- Utility class to center content horizontally
+        [ class "flex justify-center w-full bg-[url('overlay.jpg')] bg-cover bg-center bg-clip-text" ] -- Utility class to center content horizontally
         [ h1
-            [ class "text-4xl text-neutral font-extrabold text-base-content p-4" ] -- Stylize the h1
+            [ class "text-4xl text-neutral font-extrabold text-base-content py-2  text-transparent" ] -- Stylize the h1
             [ text "Inventory." ]
         ]
 
 view : Model -> Html Msg
 view model =
-    div[ class "m-4 flex flex-col gap-8 " ]
+    div [ class "min-h-screen bg-base-200 text-base-content" ]
+    [  case model.page of
+        PageCategories ->
+            pageCategories model
+        PageLocation ->
+            pageLocation model
+        PageSettings ->
+            pageSettings model
+        rest  ->  Debug.todo ("Implement other pages: " ++ (Debug.toString rest))
+    ]
+
+pageCategories : Model -> Html Msg
+pageCategories model =
+    div[ class "flex flex-col" ]
         [ viewHeading
         , viewNavbar model
         , viewList model
         ]
 
 
+pageLocation : Model -> Html Msg
+pageLocation model =
+    div[ class "flex flex-col" ]
+        [ viewHeading
+        , viewNavbar model
+        , p [] [ text "Location page content goes here." ]
+        ]
+
+pageSettings : Model -> Html Msg
+pageSettings model =
+    div[ class "flex flex-col" ]
+        [ viewHeading
+        , viewNavbar model
+        , view2 model
+        ]
+
 
 view2 model =
-    div [class "bg-teal-900 flex flex-col min-h-screen text-white p-4"]
-        [ p [] [text ("Platform: " ++ model.platform)]
-        , button [class "btn btn-primary"] [ text "DaisyUI Button"]
-        , div [] [button [ onClick TakePicture ] [ text "Take picture" ]]
-        , div [] [button [ onClick RequestDeviceList ] [ text "Connect to Serial Port" ]]
-        , div [] [ input [ placeholder "Enter text..." ] [] ]
-        , div [] [ text <| "Received: " ++ model.receivedData ]
-        , div [] [ text <| "Counter: " ++ String.fromInt (model.counter) ]
-        , div [] [button [ onClick IncrementCounter] [text "Increment Counter"]]
-        , div []
-            [ input [ id "debug-checkbox", type_ "checkbox", onCheck (DebugToggle), class "w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"] []
-            , label [ for "debug-checkbox", class "ms-2 text-sm font-medium text-gray-900 dark:text-gray-300"] [ text "Enable Debugging" ]]
+    div [class "bg-base flex flex-col p-4  gap-2"]
+        [ viewPanel ""
+            [ p [] [text ("Platform: " ++ model.platform)]
+            , button [class "btn btn-primary"] [ text "DaisyUI Button"]
+            , div [] [button [ onClick TakePicture ] [ text "Take picture" ]]
+            , div [] [button [ onClick RequestDeviceList ] [ text "Connect to Serial Port" ]]
+            , div [] [ input [ placeholder "Enter text..." ] [] ]
+            , div [] [ text <| "Received: " ++ model.receivedData ]
+            , div [] [ text <| "Counter: " ++ String.fromInt (model.counter) ]
+            , div [] [button [ onClick IncrementCounter] [text "Increment Counter"]]
+            , div []
+                [ input [ id "debug-checkbox", type_ "checkbox", onCheck (DebugToggle), class "w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"] []
+                , label [ for "debug-checkbox", class "ms-2 text-sm font-medium text-gray-900 dark:text-gray-300"] [ text "Enable Debugging" ]]
+            ]
         , htmlIf model.showDebug (viewDebugCmd model) (div [][])
         , viewPanelConnection model
         , viewPanelRfidPower model
@@ -632,14 +638,14 @@ view2 model =
             Just ewp ->
                 viewPanelWorkingParameter ewp
             Nothing ->
-                button [onClick (SetEditWorkingParameters model.workingParameters)] [ text "Edit Working Parameters"]
+                button [onClick (SetEditWorkingParameters model.workingParameters), class "btn btn-secondary"] [ text "Edit Working Parameters"]
         , viewPanelFilter model
         , viewPanelInventory model
         ]
 
 viewPanel : String -> (List (Html msg)) -> Html msg
 viewPanel title contents = 
-    div [class "my-4 p-4 border border-gray-500 rounded-xl bg-teal-800"]
+    div [class "p-4 border-base-300 rounded bg-base-100"]
     [ h1 [] [text title]
     , div [class "flex flex-col gap-2"] contents
     ]
@@ -651,16 +657,16 @@ viewPanelConnection model =
                 disabled (model.selectedDevice == Nothing)
                     :: (case model.selectedDevice of
                             Just device ->
-                                [ onClick (Connect device) ]
+                                [ onClick (Connect device), class "btn btn-primary" ]
 
                             Nothing ->
-                                []
+                                [ class "btn btn-primary" ]
                     )
         in
             viewPanel "Connection"
             [ p [] [text ("Connection status: " ++ serialStatusToString model.serialStatus)]
             , htmlIf (List.isEmpty model.deviceList)
-                            (Html.h1 [class "text-gray-300 text-3xl font-bold underline"] [ text "No Bluetooth Devices Found" ])
+                            (Html.h1 [class "font-bold text-warning"] [ text "No Bluetooth Devices Found" ])
                             (div [] 
                                 [text "Available Bluetooth Devices:"
                                 , select [onInput ((Device.deviceByAddr model.deviceList >> DeviceSelected) )]
@@ -698,10 +704,10 @@ viewDebugCmd : Model -> Html Msg
 viewDebugCmd model =
     div [] 
     [ viewPanel "Debug Commands"
-        [ button [ onClick (ReceiveDeviceList [Device "Device A" "00:00:00:00:00:01", Device "Device B" "00:00:00:00:00:02"]) ] [text "Debug get device list"]
-        , button [ onClick (ReceiveData [0xf0, 0x03, 0x04, 0x00, 0x09] ) ] [text "Receive successful cmd 0x4"]
-        , button [ onClick (ReceiveData [0xf4, 0x03, 0x04, 0x11, 0xf4] ) ] [text "Receive error cmd 0x4"]
-        , button [ onClick (SendCommand VH88.startListingTags) ] [text "Debug start listing tags"]
+        [ button [ class "btn", onClick (ReceiveDeviceList [Device "Device A" "00:00:00:00:00:01", Device "Device B" "00:00:00:00:00:02"]) ] [text "Debug get device list"]
+        , button [ class "btn", onClick (ReceiveData [0xf0, 0x03, 0x04, 0x00, 0x09] ) ] [text "Receive successful cmd 0x4"]
+        , button [ class "btn", onClick (ReceiveData [0xf4, 0x03, 0x04, 0x11, 0xf4] ) ] [text "Receive error cmd 0x4"]
+        , button [ class "btn", onClick (SendCommand VH88.startListingTags) ] [text "Debug start listing tags"]
         ]
     , viewPanel "Debug Info"
         [ viewPendingCommands model
@@ -775,7 +781,7 @@ viewPanelFilter model =
             Html.li []
                 [ span [] 
                     [ text ("EPC: " ++ (epcToString epc) )
-                    , button [ onClick (EPCFilter (Remove epc)) ] [ text "Remove From Filter" ]
+                    , button [class "btn", onClick (EPCFilter (Remove epc)) ] [ text "Remove From Filter" ]
                     ]
                 ]     
     in
@@ -794,14 +800,14 @@ viewPanelInventory model =
             Html.li []
                 [ span [] 
                     [ text ("EPC: " ++ (epcToString item.epc) ++ ", Last Seen: " ++ humanTimeDifference item.lastSeen model.time ++ " ago")
-                    , button  [onClick (EPCFilter (Add item.epc))] [ text "Add to Filter" ]
+                    , button  [class "btn", onClick (EPCFilter (Add item.epc))] [ text "Add to Filter" ]
                     ]
                 ]     
     in
     
         viewPanel "Inventory"
             [ h1 [] [ text ("Total unique tags: " ++ String.fromInt (Dict.size model.inventory)) ]
-            , button [ onClick ClearInventory ] [ text "Clear Inventory" ]
+            , button [ class "btn", onClick ClearInventory ] [ text "Clear Inventory" ]
             , ul []
                 (Dict.values model.inventory
                     |> List.map itemToLi

@@ -6,14 +6,15 @@
 
 }
 
+
 @plugin "daisyui/theme" {
   name: "inventory";
   default: true;
   prefersdark: false;
   color-scheme: "dark";
   --color-base-100: oklch(24.48% 0.010 163.98);
-  --color-base-200: oklch(17.48% 0.010 163.98);
-  --color-base-300: oklch(04.48% 0.010 163.98);
+  --color-base-200: oklch(20.48% 0.010 163.98);
+  --color-base-300: oklch(14.48% 0.010 163.98);
   --color-base-content: oklch(95.27% 0.050 180.80);
   --color-primary: oklch(50.0% 0.3 156);
   --color-primary-content: oklch(98% 0.014 180.72);
@@ -33,11 +34,12 @@
   --color-error-content: oklch(96% 0.015 12.422);
   --radius-selector: 2rem;
   --radius-field: 2rem;
-  --radius-box: 0rem;
+  --radius-box: 0.5rem;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
-  --border: 1px;
+  --border: 0.5px;
   --depth: 0;
-  --noise: 1;
+  --noise: 0;
 }
+
 
