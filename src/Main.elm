@@ -106,6 +106,7 @@ routeParser : Parser (Page -> a) a
 routeParser =
   oneOf
     [ UrlParser.map PageCategories   (s "categories")
+    , UrlParser.map PageItems       (s "items")
     , UrlParser.map PageLocation    (s "location")
     , UrlParser.map PageSettings    (s "settings")
     ]
@@ -113,6 +114,7 @@ routeParser =
 
 
 type Page = PageCategories
+          | PageItems
           | PageLocation
           | PageSettings
           | PageTODO
@@ -122,6 +124,8 @@ pageSpecificCmds page =
     case page of
         PageCategories ->
             [ indexedDbCmd (IndexedDB.listItemKeywords) ]
+        PageItems ->
+            [ indexedDbCmd (IndexedDB.listItems) ]
         _ ->
             []
 
@@ -150,6 +154,7 @@ type alias Model =
     , indexedDBStatus : IndexedDB.DBStatus
     , itemKeywordCounts : Maybe KeywordCount
     , itemForm : Item.Form
+    , items : Maybe (List Item.Item)
 
     , page : Page
     }
@@ -205,6 +210,7 @@ init flags url key =
             , indexedDBStatus = IndexedDB.StatusNone
             , itemKeywordCounts = Nothing
             , itemForm = Item.defaultForm
+            , items = Nothing
             , page = page
             }
         , initCmd
@@ -508,6 +514,12 @@ update msg model =
                                 |> String.join ", "
                     in
                         ( { model | itemKeywordCounts = Just keywordCounts, receivedData = "Keywords: " ++ keywordsString }, Cmd.none )
+                IndexedDB.ListItemsResult items ->
+                    ( { model | items = Just items}, Cmd.none )
+                
+                IndexedDB.AddItemResult ->
+                    ( model, indexedDbCmd IndexedDB.listItems )
+
                 IndexedDB.UnknownResult ->
                     ( { model | receivedData = "Received unknown IndexedDB result." }, Cmd.none )
 
@@ -663,6 +675,7 @@ viewNavbar model =
     
     div [ Attrs.attribute "role" "tablist",  class " tabs tabs-border shadow-sm justify-center pb-8" ]
         [ link "/categories" PageCategories "Categories" [ message ListItemKeywords]
+        , link "/items" PageItems "Items" []
         , link "/location" PageLocation "Location" []
         , link "/settings" PageSettings "Settings" []
         , Html.a [ Attrs.attribute "role" "tab", class (isActive PageTODO ++ "text-xs tab") ] [ text "Ownership" ]
@@ -680,8 +693,18 @@ listItem name subtitle =
             ]
         ]
 
-viewList : Model -> KeywordCount -> Html Msg
-viewList model keywordCounts = 
+viewItemList : Model -> List Item.Item -> Html Msg
+viewItemList model items = 
+    let
+        listItems =
+            items
+                |> List.map (\item -> listItem item.title "blah")
+    in
+        ul [ class "list bg-base-100 rounded-box shadow-md" ]
+            listItems
+
+viewKeywordCountList : Model -> KeywordCount -> Html Msg
+viewKeywordCountList model keywordCounts = 
     let
         listItems =
             keywordCounts
@@ -717,6 +740,8 @@ view model =
             pageLocation model
         PageSettings ->
             pageSettings model
+        PageItems ->
+            pageItems model
         rest  ->  Debug.todo ("Implement other pages: " ++ (Debug.toString rest))
     ]
 
@@ -730,7 +755,7 @@ pageCategories model =
                     if Dict.isEmpty keywordCounts then
                         p [] [ text "No keywords found." ]
                     else
-                        viewList model keywordCounts
+                        viewKeywordCountList model keywordCounts
                 Nothing ->
                     p [] [ text "Loading..." ]
     in
@@ -738,11 +763,6 @@ pageCategories model =
     div[ class "flex flex-col gap-4" ]
         [ viewHeading
         , viewNavbar model
-        , viewPanel "Add Item"
-            [ input [ placeholder "Enter item name..." , class "input input-bordered w-full max-w-xs", onInput (\title -> AddItemForm (ItemFormTitle title)) ] []
-            , Item.titleErrorField model.itemForm.title
-            , button [ class "btn btn-secondary", onClick AddItemFormSubmit ] [ text "Add Item" ]
-            ]
         , viewPanel ""
             [ button [ class "btn", onClick (FindItem "Yarn")] [ text "Search"]
             , button [ class "btn", onClick (ListItemKeywords)] [ text "Get keywords" ]
@@ -766,6 +786,31 @@ pageSettings model =
         , viewNavbar model
         , view2 model
         ]
+    
+pageItems : Model -> Html Msg
+pageItems model =
+    let
+        maybeItems = model.items
+        panelItems =
+            case maybeItems of
+                Just items ->
+                    if List.isEmpty items then
+                        p [] [ text "No keywords found." ]
+                    else
+                        viewItemList model items
+                Nothing ->
+                    p [] [ text "Loading..." ]
+    in
+        div[ class "flex flex-col" ]
+            [ viewHeading
+            , viewNavbar model
+            , viewPanel "Add Item"
+                [ input [ placeholder "Enter item name..." , class "input input-bordered w-full max-w-xs", onInput (\title -> AddItemForm (ItemFormTitle title)) ] []
+                , Item.titleErrorField model.itemForm.title
+                , button [ class "btn btn-secondary", onClick AddItemFormSubmit ] [ text "Add Item" ]
+                ]
+            , panelItems
+            ]
 
 
 view2 model =

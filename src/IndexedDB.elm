@@ -41,7 +41,9 @@ keywordCountDecoder =
 
 type IndexedDBResult = FindItemResult (Maybe Item)
                      | ListItemKeywordsResult KeywordCount
+                     | ListItemsResult (List Item)
                      | OpenResult DBStatus
+                     | AddItemResult
                      | UnknownResult
 
 receive : (String, Json.Decode.Value) -> IndexedDBResult
@@ -61,13 +63,16 @@ receive (cmd, value) =
                     ListItemKeywordsResult keywords
                 Err _ ->
                     ListItemKeywordsResult Dict.empty
+        "listItemsResult" ->
+            case Json.Decode.decodeValue (Json.Decode.list itemDecoder) value of
+                Ok items ->
+                    ListItemsResult items
+                Err _ ->
+                    ListItemsResult []
+        "addItemResult" ->
+            AddItemResult
         _ -> UnknownResult
 
--- receive : (IndexedDB -> msg) -> IndexedDB -> Json.Decode.Value -> msg
--- receive toMsg db value =
---     -- identity function for now
---     -- db
---     toMsg db
 
     
 send : IndexedDB -> Json.Encode.Value
@@ -84,6 +89,10 @@ findItem name =
 listItemKeywords : IndexedDbCmdArg
 listItemKeywords =
     ( "listItemKeywords", Json.Encode.null )
+
+listItems : IndexedDbCmdArg
+listItems =
+    ( "listItems", Json.Encode.null )
 
 addItem : Item -> IndexedDbCmdArg
 addItem item =

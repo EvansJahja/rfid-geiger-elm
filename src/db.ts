@@ -73,6 +73,10 @@ class DB {
         return uniqueKeywordsAndCount;
     }
 
+    async listItems() : Promise<ItemValue[]> {
+        return await this.db.getAll('item');
+    }
+
     async addItem(item: ItemValue) {
         return await this.db.add('item', item);
     }

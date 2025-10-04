@@ -114,6 +114,16 @@ app.ports.indexedDbCmd.subscribe(async function([cmd, args]) {
             }
             break;
         }
+
+        case "listItems": {
+            if (!db) {
+                db = await open();
+            }
+            const items = await db.listItems();
+            console.log("Listing items:", items);
+            app.ports.indexedDbSub.send(["listItemsResult", items]);
+            break;
+        }
     }
 });
 
