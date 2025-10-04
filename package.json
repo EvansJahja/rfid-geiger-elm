@@ -4,7 +4,7 @@
   "description": "",
   "license": "ISC",
   "author": "",
-  "main": "public/main.js",
+  "main": "public/main.ts",
   "scripts": {
     "elm:build": "elm make src\\Main.elm --output public\\elm.js",
     "elm:live": "elm-live src\\Main.elm --no-server -- --output public\\elm.js",
@@ -25,6 +25,7 @@
     "@capacitor/camera": "^7.0.2",
     "capacitor-bluetooth-serial": "file:../capacitor-bluetooth-serial",
     "elm-webpack-loader": "^8.0.0",
+    "idb": "^8.0.3",
     "tailwindcss": "^4.1.13"
   },
   "devDependencies": {
@@ -35,6 +36,8 @@
     "daisyui": "^5.1.26",
     "elm-reloader": "^1.1.2",
     "elm-test": "^0.19.1-revision16",
+    "ts-loader": "^9.5.4",
+    "typescript": "^5.9.3",
     "webpack": "^5.101.3",
     "webpack-cli": "^6.0.1",
     "webpack-dev-server": "^5.2.2"

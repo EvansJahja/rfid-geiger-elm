@@ -29,6 +29,7 @@ import BytesHelper
 import VH88.WorkingParameters as WorkingParameters
 import Hex
 import Html exposing (span)
+import IndexedDB exposing (IndexedDB)
 
 -- STATE MANAGEMENT TYPES 
 
@@ -119,12 +120,12 @@ type alias Model =
     , platform : String
     , inventory : Inventory
     , epcFilter : Set EPC
+    , indexedDB : IndexedDB
 
     , page : Page
     }
 
 type alias DataUrl = String
-
 
 init : (Json.Decode.Value) -> ( Model, Cmd Msg )
 init flags =
@@ -136,12 +137,14 @@ init flags =
                     [ registerListener ()
                     -- , requestDeviceList () -- don't request device list automatically on web, need user gesture
                     , Time.now |> Task.perform Tick
+                    , indexedDbCmd IndexedDB.open
                     ]
             _ -> 
                 Cmd.batch
                     [ registerListener ()
                     , requestDeviceList ()
                     , Time.now |> Task.perform Tick
+                    , indexedDbCmd IndexedDB.open
                     ]
         
     in
@@ -162,6 +165,8 @@ init flags =
             , platform = platform
             , inventory = Dict.empty
             , epcFilter = Set.empty
+            , indexedDB = IndexedDB.new
+
             , page = PageSettings
             }
         , initCmd
@@ -191,6 +196,8 @@ type Msg
     | EPCFilter EPCFilterOperation
     | TakePicture
     | PictureResult DataUrl
+    | FindItem String
+    | IndexedDBResult IndexedDB.IndexedDBResult
     | PageChange Page
 
 type EPCFilterOperation = Add EPC | Remove EPC
@@ -285,6 +292,9 @@ port deviceList : (Json.Decode.Value -> msg) -> Sub msg
 port takePicture : () -> Cmd msg
 
 port pictureResult : (String -> msg) -> Sub msg
+
+port indexedDbCmd : (String , Json.Encode.Value) -> Cmd msg
+port indexedDbSub : ((String, Json.Decode.Value) -> msg) -> Sub msg
 
 
 -- UPDATE
@@ -430,8 +440,17 @@ update msg model =
             ( { model | receivedData = "Received picture data URL of length: " ++ String.fromInt (String.length dataUrl) }, Cmd.none )
         PageChange newPage ->
             ( { model | page = newPage }, Cmd.none )
+        FindItem name -> 
+            (model, indexedDbCmd (IndexedDB.findItem name))
+        IndexedDBResult result ->
+            case result of
+                IndexedDB.FindItemResult maybeItem ->
+                    case maybeItem of
+                        Just item ->
+                            ( { model | receivedData = "Found item: " ++ item.title }, Cmd.none )
+                        Nothing ->
+                            ( { model | receivedData = "Item not found." }, Cmd.none )
 
-                
 
 addPendingCommandToModel : Model -> Command -> PendingCommand
 addPendingCommandToModel model cmd =
@@ -459,7 +478,7 @@ delay sleepMs msg =
 -- SUBSCRIPTIONS
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
+subscriptions model =
     Sub.batch
         [ Time.every 500 Tick
         , serialData ReceiveData
@@ -474,6 +493,8 @@ subscriptions _ =
                     Debug.todo "Implement error handling for device list decoding"
           )
         , pictureResult PictureResult
+        , indexedDbSub (IndexedDB.receive >> IndexedDBResult)
+
         ]
 
 -- VIEW
@@ -595,7 +616,10 @@ pageCategories model =
     div[ class "flex flex-col" ]
         [ viewHeading
         , viewNavbar model
-        , viewList model
+        , viewPanel ""
+            [ button [ class "btn", onClick (FindItem "Yarn")] [ text "Search"]
+            , viewList model
+            ]
         ]
 
 
