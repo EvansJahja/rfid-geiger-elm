@@ -2,6 +2,9 @@ module IndexedDB exposing (..)
 import Json.Decode
 import Json.Encode
 import Task
+import Dict exposing (Dict)
+
+type DBStatus = StatusNone | StatusOpened
 
 
 type alias CmdMsg msg = (IndexedDB -> Cmd msg)
@@ -18,19 +21,40 @@ itemDecoder =
     Json.Decode.map Item
         (Json.Decode.field "title" Json.Decode.string)
 
+
+{--
+    KeywordCount is a json object with dynamic keys (the keywords) and integer values (the counts).
+--} 
+
+type alias KeywordCount = Dict String Int
+keywordCountDecoder : Json.Decode.Decoder KeywordCount
+keywordCountDecoder =
+    Json.Decode.dict Json.Decode.int
+
+
 type IndexedDBResult = FindItemResult (Maybe Item)
+                     | ListItemKeywordsResult KeywordCount
+                     | OpenResult DBStatus
+                     | UnknownResult
 
 receive : (String, Json.Decode.Value) -> IndexedDBResult
 receive (cmd, value) = 
     case cmd of
+        "openResult" ->
+            OpenResult StatusOpened
         "findItemResult" ->
             case Json.Decode.decodeValue itemDecoder value of
                 Ok item ->
                     FindItemResult (Just item)
                 Err _ ->
                     FindItemResult Nothing
-        _ ->
-            FindItemResult Nothing
+        "listItemKeywordsResult" ->
+            case Json.Decode.decodeValue keywordCountDecoder value of
+                Ok keywords ->
+                    ListItemKeywordsResult keywords
+                Err _ ->
+                    ListItemKeywordsResult Dict.empty
+        _ -> UnknownResult
 
 -- receive : (IndexedDB -> msg) -> IndexedDB -> Json.Decode.Value -> msg
 -- receive toMsg db value =
@@ -50,6 +74,9 @@ findItem : String -> IndexedDbCmdArg
 findItem name =
     ( "findItem", Json.Encode.string name )
 
+listItemKeywords : IndexedDbCmdArg
+listItemKeywords =
+    ( "listItemKeywords", Json.Encode.null )
 
 open : IndexedDbCmdArg
 open =

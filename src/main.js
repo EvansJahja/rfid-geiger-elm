@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import { CapacitorBluetoothSerial } from 'capacitor-bluetooth-serial';
 import { Camera } from '@capacitor/camera';
 import { Elm } from './Main.elm';
@@ -6,6 +7,7 @@ import { DB, open } from './db.ts';
 
 const platform = Capacitor.getPlatform();
 const app = Elm.Main.init({ node: document.getElementById('elm-app'), flags: { platform } });
+
 
 // Module-level variables to maintain serial port state
 
@@ -76,21 +78,36 @@ app.ports.indexedDbCmd.subscribe(async function([cmd, args]) {
     console.log("Received IndexedDB command from Elm:", cmd, args);
     switch (cmd) {
         case "open":
-            if (db) {
-                throw new Error("IndexedDB is already opened");
+            if (!db) {
+                db = await open();
             }
-            db = await open();
-            console.log("Opened IndexedDB:", db);
+            app.ports.indexedDbSub.send(["openResult", null]);
             break;
         case "findItem":
             if (!db) {
-                throw new Error("IndexedDB is not opened");
+                db = await open();
             }
             const item = await db.findItem(args);
             console.log("Found item:", item);
             app.ports.indexedDbSub.send(["findItemResult", item]);
             break;
-        // Handle other commands as needed
+        case "listItemKeywords":
+            if (!db) {
+                db = await open();
+            }
+            const keywordsAndCount = await db.listItemKeywords();
+            console.log("Found keywords:", keywordsAndCount);
+            app.ports.indexedDbSub.send(["listItemKeywordsResult", keywordsAndCount]);
+    }
+});
+
+
+// Capacitor App
+App.addListener('backButton', ({ canGoBack }) => {
+    if (canGoBack) {
+        window.history.back();
+    } else {
+        // App.exitApp();
     }
 });
 

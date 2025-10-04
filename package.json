@@ -22,6 +22,7 @@
     "live:web": "concurrently \"npm run webpack:serve\" \"npm run css:watch\""
   },
   "dependencies": {
+    "@capacitor/app": "^7.1.0",
     "@capacitor/camera": "^7.0.2",
     "capacitor-bluetooth-serial": "file:../capacitor-bluetooth-serial",
     "elm-webpack-loader": "^8.0.0",

@@ -30,22 +30,14 @@ export interface MyNewDBSchema extends DBSchema {
 
 export async function open() {
     console.log("Opening IndexedDB database...");
-    const db = await openDB<MyNewDBSchema>('MyDatabase', 4, {
+    const db = await openDB<MyNewDBSchema>('MyDatabase', 1, {
         upgrade(db, oldVersion, newVersion, transaction) {
-            console.log(transaction)
             if (oldVersion < 1) {
                 console.log("Upgrading IndexedDB to version 1");
                 const itemObjStore = db.createObjectStore("item", { keyPath: "title"});
                 console.log("Object store 'item' created.");
-            }
-
-            if (oldVersion < 4) {
-                // remove category store 
-                db.deleteObjectStore("category");
-                console.log("Object store 'category' deleted.");
 
                 // add multientry index to item
-                const itemObjStore = transaction.objectStore("item");
                 itemObjStore.createIndex("keywords", "keywords", { multiEntry: true });
             }
         }
@@ -70,6 +62,15 @@ class DB {
 
     async findItem(title: string) {
         return await this.db.get('item', title);
+    }
+
+    async listItemKeywords()  : Promise<Record<string, number>> {
+        const keywords = await this.db.getAllKeysFromIndex('item', 'keywords');
+        const uniqueKeywordsAndCount = keywords.reduce((acc: Record<string, number>, keyword) => {
+            acc[keyword] = (acc[keyword] || 0) + 1;
+            return acc;
+        }, {});
+        return uniqueKeywordsAndCount;
     }
 
     // async addItem(item) {

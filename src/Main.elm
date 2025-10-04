@@ -1,6 +1,9 @@
 port module Main exposing (..)
 
 import Browser
+import Browser.Navigation as Nav
+import Url
+import Url.Parser as UrlParser exposing (Parser, (</>), int, oneOf, s, string)
 import Html exposing (Html, button, div, input, text, select, option, h1, ul, li, label, p)
 import Html.Events exposing (onClick, onInput, onCheck, on)
 import Html.Attributes exposing (..)
@@ -30,6 +33,7 @@ import VH88.WorkingParameters as WorkingParameters
 import Hex
 import Html exposing (span)
 import IndexedDB exposing (IndexedDB)
+import IndexedDB exposing (KeywordCount)
 
 -- STATE MANAGEMENT TYPES 
 
@@ -94,16 +98,41 @@ type alias InventoryItem =
 
 type alias Inventory = Dict EPC InventoryItem
 
+-- ROUTING
+
+routeParser : Parser (Page -> a) a
+routeParser =
+  oneOf
+    [ UrlParser.map PageCategories   (s "categories")
+    , UrlParser.map PageLocation    (s "location")
+    , UrlParser.map PageSettings    (s "settings")
+    ]
+
+
 
 type Page = PageCategories
           | PageLocation
           | PageSettings
           | PageTODO
 
+pageSpecificCmds : Page -> List (Cmd Msg)
+pageSpecificCmds page =
+    case page of
+        PageCategories ->
+            [ indexedDbCmd (IndexedDB.listItemKeywords) ]
+        _ ->
+            []
+
 -- MODEL
 
+type alias InventoryForm = 
+    { title : String
+    }
+
 type alias Model =
-    { time : Time.Posix
+    { key: Nav.Key
+    , url : Url.Url
+    , time : Time.Posix
     , receivedData : String
     , textToSend : String
     , deviceList : List Device
@@ -120,35 +149,45 @@ type alias Model =
     , platform : String
     , inventory : Inventory
     , epcFilter : Set EPC
-    , indexedDB : IndexedDB
+    , indexedDBStatus : IndexedDB.DBStatus
+    , itemKeywordCounts : Maybe KeywordCount
+    , itemForm : ItemForm
 
     , page : Page
     }
 
 type alias DataUrl = String
 
-init : (Json.Decode.Value) -> ( Model, Cmd Msg )
-init flags =
+init : (Json.Decode.Value) -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
+init flags url key =
     let
         platform = Decode.decodeValue (Decode.field "platform" Decode.string) flags |> Result.withDefault "unknown"
+        page = UrlParser.parse routeParser url |> Maybe.withDefault (PageSettings)
         initCmd = case platform of
             "web" ->
                 Cmd.batch
+                (
                     [ registerListener ()
                     -- , requestDeviceList () -- don't request device list automatically on web, need user gesture
                     , Time.now |> Task.perform Tick
                     , indexedDbCmd IndexedDB.open
                     ]
+                    ++ pageSpecificCmds page
+                )
             _ -> 
                 Cmd.batch
+                (
                     [ registerListener ()
                     , requestDeviceList ()
                     , Time.now |> Task.perform Tick
                     , indexedDbCmd IndexedDB.open
-                    ]
+                    ] 
+                )
         
     in
-        (   { time = Time.millisToPosix 0
+        (   { key = key
+            , url = url
+            , time = Time.millisToPosix 0
             , receivedData = "No data yet."
             , textToSend = ""
             , deviceList = []
@@ -165,9 +204,10 @@ init flags =
             , platform = platform
             , inventory = Dict.empty
             , epcFilter = Set.empty
-            , indexedDB = IndexedDB.new
-
-            , page = PageSettings
+            , indexedDBStatus = IndexedDB.StatusNone
+            , itemKeywordCounts = Nothing
+            , itemForm = newItemForm
+            , page = page
             }
         , initCmd
         )
@@ -197,8 +237,22 @@ type Msg
     | TakePicture
     | PictureResult DataUrl
     | FindItem String
+    | ListItemKeywords
     | IndexedDBResult IndexedDB.IndexedDBResult
-    | PageChange Page
+    | PageChange Page (List (Cmd Msg))
+    | AddItemForm ItemFormField
+    | AddItemFormSubmit 
+    | LinkClicked Browser.UrlRequest
+    | UrlChanged Url.Url
+
+type ItemFormField = ItemFormTitle String
+type alias ItemForm =
+    { title : String
+    }
+newItemForm : ItemForm
+newItemForm =
+    { title = ""
+    }
 
 type EPCFilterOperation = Add EPC | Remove EPC
 
@@ -438,18 +492,60 @@ update msg model =
             ( model, takePicture () )
         PictureResult dataUrl ->
             ( { model | receivedData = "Received picture data URL of length: " ++ String.fromInt (String.length dataUrl) }, Cmd.none )
-        PageChange newPage ->
-            ( { model | page = newPage }, Cmd.none )
+        PageChange newPage cmds->
+            ( { model | page = newPage }, Cmd.batch cmds )
         FindItem name -> 
             (model, indexedDbCmd (IndexedDB.findItem name))
+        ListItemKeywords ->
+            (model, indexedDbCmd (IndexedDB.listItemKeywords))
         IndexedDBResult result ->
             case result of
+                IndexedDB.OpenResult status ->
+                    ( { model | indexedDBStatus = status }, Cmd.none )
                 IndexedDB.FindItemResult maybeItem ->
                     case maybeItem of
                         Just item ->
                             ( { model | receivedData = "Found item: " ++ item.title }, Cmd.none )
                         Nothing ->
                             ( { model | receivedData = "Item not found." }, Cmd.none )
+                IndexedDB.ListItemKeywordsResult keywordCounts ->
+                    let
+                        keywordsString = 
+                            keywordCounts
+                                |> Dict.toList
+                                |> List.map (\(keyword, count) -> keyword ++ " (" ++ String.fromInt count ++ ")")
+                                |> String.join ", "
+                    in
+                        ( { model | itemKeywordCounts = Just keywordCounts, receivedData = "Keywords: " ++ keywordsString }, Cmd.none )
+                IndexedDB.UnknownResult ->
+                    ( { model | receivedData = "Received unknown IndexedDB result." }, Cmd.none )
+
+        LinkClicked urlRequest ->
+            case urlRequest of
+                Browser.Internal url ->
+                    ( model, Nav.pushUrl model.key (Debug.log "Navigating to internal URL" (Url.toString url)) )
+
+                Browser.External href ->
+                    ( model, Nav.load (Debug.log "Navigating to external URL" href) )
+
+        UrlChanged url ->
+            let
+                newPage = UrlParser.parse routeParser url |> Maybe.withDefault (PageSettings)
+                
+            in
+            
+            ( { model | url = (Debug.log "URL changed" url), page = newPage }
+            , message (PageChange newPage (pageSpecificCmds newPage))
+            )
+        AddItemForm (ItemFormTitle title) ->
+            let
+                itemForm = model.itemForm
+            in
+
+            ( { model | itemForm = { itemForm | title = title } }, Cmd.none )
+        AddItemFormSubmit ->
+            (model, Cmd.none)
+
 
 
 addPendingCommandToModel : Model -> Command -> PendingCommand
@@ -557,15 +653,16 @@ viewNavbar model =
                 ""
 
 
-        link : Page -> String -> Html Msg
-        link page label =
-            Html.a [ Attrs.attribute "role" "tab", class (isActive page ++ "text-xs tab "), onClick (PageChange page) ] [ text label ]
+        link : String -> Page -> String -> List (Cmd Msg) -> Html Msg
+        link href page label cmds =
+            -- Html.a [ Attrs.attribute "role" "tab", Attrs.href label , class (isActive page ++ "text-xs tab "), onClick (PageChange page cmds) ] [ text label ]
+            Html.a [ Attrs.attribute "role" "tab", Attrs.href href , class (isActive page ++ "text-xs tab ")] [ text label ]
     in
     
     div [ Attrs.attribute "role" "tablist",  class " tabs tabs-border shadow-sm justify-center pb-8" ]
-        [ link PageCategories "Categories"
-        , link PageLocation "Location"
-        , link PageSettings "Settings"
+        [ link "/categories" PageCategories "Categories" [ message ListItemKeywords]
+        , link "/location" PageLocation "Location" []
+        , link "/settings" PageSettings "Settings" []
         , Html.a [ Attrs.attribute "role" "tab", class (isActive PageTODO ++ "text-xs tab") ] [ text "Ownership" ]
         , Html.a [ Attrs.attribute "role" "tab", class (isActive PageTODO ++ "text-xs tab") ] [ text "All" ]
         ]
@@ -581,13 +678,17 @@ listItem name subtitle =
             ]
         ]
 
-viewList : Model -> Html Msg
-viewList model = 
-    ul [ class "list bg-base-100 rounded-box shadow-md" ]
-        [ listItem "Clays" "3"
-        , listItem "Nail Supplies" "20"
-        , listItem "Crotchet" "100+"
-        ]
+viewList : Model -> KeywordCount -> Html Msg
+viewList model keywordCounts = 
+    let
+        listItems =
+            keywordCounts
+                |> Dict.toList
+                |> List.map (\(keyword, count) -> listItem keyword (String.fromInt count))
+    in
+        ul [ class "list bg-base-100 rounded-box shadow-md" ]
+            listItems
+        
 
 viewHeading : Html Msg
 viewHeading =
@@ -597,6 +698,12 @@ viewHeading =
             [ class "text-4xl text-neutral font-extrabold text-base-content py-2  text-transparent" ] -- Stylize the h1
             [ text "Inventory." ]
         ]
+
+viewDoc : Model -> Browser.Document Msg
+viewDoc model =
+    { title = "Inventory"
+    , body = [view model]
+    }
 
 view : Model -> Html Msg
 view model =
@@ -613,12 +720,31 @@ view model =
 
 pageCategories : Model -> Html Msg
 pageCategories model =
-    div[ class "flex flex-col" ]
+    let
+        maybeKeywordCounts = model.itemKeywordCounts
+        panelContents =
+            case maybeKeywordCounts of
+                Just keywordCounts ->
+                    if Dict.isEmpty keywordCounts then
+                        p [] [ text "No keywords found." ]
+                    else
+                        viewList model keywordCounts
+                Nothing ->
+                    p [] [ text "Loading..." ]
+        
+    in
+    
+    div[ class "flex flex-col gap-4" ]
         [ viewHeading
         , viewNavbar model
+        , viewPanel "Add Item"
+            [ input [ placeholder "Enter item name..." , class "input input-bordered w-full max-w-xs", onInput (\title -> AddItemForm (ItemFormTitle title)) ] []
+            , button [ class "btn btn-secondary", onClick AddItemFormSubmit ] [ text "Add Item" ]
+            ]
         , viewPanel ""
             [ button [ class "btn", onClick (FindItem "Yarn")] [ text "Search"]
-            , viewList model
+            , button [ class "btn", onClick (ListItemKeywords)] [ text "Get keywords" ]
+            , panelContents
             ]
         ]
 
@@ -853,9 +979,11 @@ humanTimeDifference earlier later =
 
 main : Program Json.Decode.Value Model Msg
 main =
-    Browser.element
+    Browser.application
         { init = init
-        , view = view
+        , view = viewDoc
         , update = update
         , subscriptions = subscriptions
+        , onUrlChange = UrlChanged
+        , onUrlRequest = LinkClicked
         }
