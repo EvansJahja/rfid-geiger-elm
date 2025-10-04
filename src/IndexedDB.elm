@@ -16,6 +16,13 @@ new = { }
 
 
 type alias Item = { title: String }
+
+itemEncoder : Item -> Json.Encode.Value
+itemEncoder item =
+    Json.Encode.object 
+        [ ("title", Json.Encode.string item.title) 
+        ]
+
 itemDecoder : Json.Decode.Decoder Item
 itemDecoder =
     Json.Decode.map Item
@@ -77,6 +84,10 @@ findItem name =
 listItemKeywords : IndexedDbCmdArg
 listItemKeywords =
     ( "listItemKeywords", Json.Encode.null )
+
+addItem : Item -> IndexedDbCmdArg
+addItem item =
+    ( "addItem", itemEncoder item )
 
 open : IndexedDbCmdArg
 open =

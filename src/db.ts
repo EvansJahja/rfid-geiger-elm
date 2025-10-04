@@ -73,10 +73,9 @@ class DB {
         return uniqueKeywordsAndCount;
     }
 
-    // async addItem(item) {
-    //     const db = await this.dbPromise;
-    //     return db.add('item', item);
-    // }
+    async addItem(item: ItemValue) {
+        return await this.db.add('item', item);
+    }
 
     // async deleteItem(id) {
     //     const db = await this.dbPromise;

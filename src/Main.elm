@@ -34,6 +34,8 @@ import Hex
 import Html exposing (span)
 import IndexedDB exposing (IndexedDB)
 import IndexedDB exposing (KeywordCount)
+import Item
+import Html.Events exposing (onBlur)
 
 -- STATE MANAGEMENT TYPES 
 
@@ -125,10 +127,6 @@ pageSpecificCmds page =
 
 -- MODEL
 
-type alias InventoryForm = 
-    { title : String
-    }
-
 type alias Model =
     { key: Nav.Key
     , url : Url.Url
@@ -151,7 +149,7 @@ type alias Model =
     , epcFilter : Set EPC
     , indexedDBStatus : IndexedDB.DBStatus
     , itemKeywordCounts : Maybe KeywordCount
-    , itemForm : ItemForm
+    , itemForm : Item.Form
 
     , page : Page
     }
@@ -206,7 +204,7 @@ init flags url key =
             , epcFilter = Set.empty
             , indexedDBStatus = IndexedDB.StatusNone
             , itemKeywordCounts = Nothing
-            , itemForm = newItemForm
+            , itemForm = Item.defaultForm
             , page = page
             }
         , initCmd
@@ -246,13 +244,6 @@ type Msg
     | UrlChanged Url.Url
 
 type ItemFormField = ItemFormTitle String
-type alias ItemForm =
-    { title : String
-    }
-newItemForm : ItemForm
-newItemForm =
-    { title = ""
-    }
 
 type EPCFilterOperation = Add EPC | Remove EPC
 
@@ -540,12 +531,23 @@ update msg model =
         AddItemForm (ItemFormTitle title) ->
             let
                 itemForm = model.itemForm
-            in
 
+            in
             ( { model | itemForm = { itemForm | title = title } }, Cmd.none )
         AddItemFormSubmit ->
-            (model, Cmd.none)
+            let
+                itemForm = model.itemForm
 
+                cmdMaybeAddItem = 
+                    case Item.decodeForm itemForm of
+                        Ok item ->
+                            indexedDbCmd (IndexedDB.addItem item)
+                        Err _ ->
+                            Cmd.none
+
+                
+            in
+                (model, cmdMaybeAddItem)
 
 
 addPendingCommandToModel : Model -> Command -> PendingCommand
@@ -731,7 +733,6 @@ pageCategories model =
                         viewList model keywordCounts
                 Nothing ->
                     p [] [ text "Loading..." ]
-        
     in
     
     div[ class "flex flex-col gap-4" ]
@@ -739,6 +740,7 @@ pageCategories model =
         , viewNavbar model
         , viewPanel "Add Item"
             [ input [ placeholder "Enter item name..." , class "input input-bordered w-full max-w-xs", onInput (\title -> AddItemForm (ItemFormTitle title)) ] []
+            , Item.titleErrorField model.itemForm.title
             , button [ class "btn btn-secondary", onClick AddItemFormSubmit ] [ text "Add Item" ]
             ]
         , viewPanel ""

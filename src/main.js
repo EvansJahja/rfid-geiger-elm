@@ -77,13 +77,14 @@ app.ports.takePicture.subscribe(async function() {
 app.ports.indexedDbCmd.subscribe(async function([cmd, args]) {
     console.log("Received IndexedDB command from Elm:", cmd, args);
     switch (cmd) {
-        case "open":
+        case "open": {
             if (!db) {
                 db = await open();
             }
             app.ports.indexedDbSub.send(["openResult", null]);
             break;
-        case "findItem":
+        }
+        case "findItem": {
             if (!db) {
                 db = await open();
             }
@@ -91,13 +92,28 @@ app.ports.indexedDbCmd.subscribe(async function([cmd, args]) {
             console.log("Found item:", item);
             app.ports.indexedDbSub.send(["findItemResult", item]);
             break;
-        case "listItemKeywords":
+        }
+        case "listItemKeywords": {
             if (!db) {
                 db = await open();
             }
             const keywordsAndCount = await db.listItemKeywords();
             console.log("Found keywords:", keywordsAndCount);
             app.ports.indexedDbSub.send(["listItemKeywordsResult", keywordsAndCount]);
+            break;
+        }
+        case "addItem": {
+            if (!db) {
+                db = await open();
+            }
+            try {
+                await db.addItem(args);
+                app.ports.indexedDbSub.send(["addItemResult", null]);
+            } catch (error) {
+                console.error("Error adding item:", error);
+            }
+            break;
+        }
     }
 });
 
