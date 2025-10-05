@@ -138,7 +138,6 @@ type Page
     | PageAddItems
     | PageLocation
     | PageSettings
-    | PageTODO
 
 
 pageSpecificCmds : Page -> List (Cmd Msg)
@@ -526,7 +525,7 @@ update msg (Model model) =
                     ( Model { model | inventory = newInventory, latestEPC = Just epc, itemForm = itemForm }, Cmd.none )
 
                 Command.CommandWithArgs ( unk, args ) ->
-                    ( Model { model | receivedData = "Received unknown response: " ++ Debug.toString ( unk, args ) }, Cmd.none )
+                    ( Model { model | receivedData = "Received unknown response: " }, Cmd.none )
 
         RequestDeviceList ->
             ( Model model, requestDeviceList () )
@@ -822,7 +821,7 @@ subscriptions model =
                         ReceiveDeviceList devices
 
                     Err _ ->
-                        Debug.todo "Implement error handling for device list decoding"
+                        ReceiveDeviceList []
             )
         , pictureResult TakePictureResult
         , indexedDbSub (IndexedDB.receive >> IndexedDBResult)
@@ -881,8 +880,8 @@ viewNavbar (Model model) =
         , link "/add-item" PageAddItems "Add Item" []
         , link "/location" PageLocation "Location" []
         , link "/settings" PageSettings "Settings" []
-        , Html.a [ Attrs.attribute "role" "tab", class (isActive PageTODO ++ "text-xs tab") ] [ text "Ownership" ]
-        , Html.a [ Attrs.attribute "role" "tab", class (isActive PageTODO ++ "text-xs tab") ] [ text "All" ]
+        -- , Html.a [ Attrs.attribute "role" "tab", class (isActive PageTODO ++ "text-xs tab") ] [ text "Ownership" ]
+        -- , Html.a [ Attrs.attribute "role" "tab", class (isActive PageTODO ++ "text-xs tab") ] [ text "All" ]
         ]
 
 
@@ -976,9 +975,6 @@ view (Model model) =
 
             PageAddItems ->
                 pageAddItems (Model model)
-
-            rest ->
-                Debug.todo ("Implement other pages: " ++ Debug.toString rest)
         ]
 
 
