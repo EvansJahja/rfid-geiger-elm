@@ -36,6 +36,7 @@ import IndexedDB exposing (IndexedDB)
 import IndexedDB exposing (KeywordCount)
 import Item
 import Html.Events exposing (onBlur)
+import IndexedDB exposing (IndexedDBError)
 
 -- STATE MANAGEMENT TYPES 
 
@@ -90,8 +91,8 @@ type alias EPC = (List Int)
 epcToString : EPC -> String
 epcToString nums =
     nums
-        |> List.map Hex.toString
-        |> String.join ":"
+        |> List.map (Hex.toString >> String.pad 2 '0')
+        |> String.join ""
 
 type alias InventoryItem =
     { epc : EPC
@@ -151,6 +152,7 @@ type alias Model =
     , platform : String
     , inventory : Inventory
     , epcFilter : Set EPC
+    , latestEPC : Maybe EPC
     , indexedDBStatus : IndexedDB.DBStatus
     , itemKeywordCounts : Maybe KeywordCount
     , itemForm : Item.Form
@@ -207,6 +209,7 @@ init flags url key =
             , platform = platform
             , inventory = Dict.empty
             , epcFilter = Set.empty
+            , latestEPC = Nothing
             , indexedDBStatus = IndexedDB.StatusNone
             , itemKeywordCounts = Nothing
             , itemForm = Item.defaultForm
@@ -242,7 +245,7 @@ type Msg
     | PictureResult DataUrl
     | FindItem String
     | ListItemKeywords
-    | IndexedDBResult IndexedDB.IndexedDBResult
+    | IndexedDBResult (Result IndexedDB.IndexedDBError IndexedDB.IndexedDBResult)
     | PageChange Page (List (Cmd Msg))
     | AddItemForm ItemFormField
     | AddItemFormSubmit 
@@ -407,6 +410,18 @@ update msg model =
                         epc : EPC
                         epc = args
 
+
+                        itemForm =
+                            let 
+                                modelItemForm = model.itemForm
+                            in
+                                if
+                                    model.page == PageItems || model.showDebug
+                                then
+                                    { modelItemForm | epc = epcToString epc }
+                                else
+                                    modelItemForm
+
                         -- we may be filtering this epc
                         filteredEpc = (Set.isEmpty model.epcFilter) || (Set.member epc model.epcFilter)
                         inventoryItem = { epc = epc, lastSeen = model.time }
@@ -417,7 +432,7 @@ update msg model =
                                 model.inventory
                         
                     in
-                        ( { model | inventory = newInventory }, Cmd.none)
+                        ( { model | inventory = newInventory, latestEPC = Just epc, itemForm = itemForm }, Cmd.none)
                 VH88.Command.CommandWithArgs (unk, args) ->
                     ( { model | receivedData = "Received unknown response: " ++ (Debug.toString (unk, args)) }, Cmd.none )
         
@@ -497,31 +512,39 @@ update msg model =
             (model, indexedDbCmd (IndexedDB.listItemKeywords))
         IndexedDBResult result ->
             case result of
-                IndexedDB.OpenResult status ->
-                    ( { model | indexedDBStatus = status }, Cmd.none )
-                IndexedDB.FindItemResult maybeItem ->
-                    case maybeItem of
-                        Just item ->
-                            ( { model | receivedData = "Found item: " ++ item.title }, Cmd.none )
-                        Nothing ->
-                            ( { model | receivedData = "Item not found." }, Cmd.none )
-                IndexedDB.ListItemKeywordsResult keywordCounts ->
-                    let
-                        keywordsString = 
-                            keywordCounts
-                                |> Dict.toList
-                                |> List.map (\(keyword, count) -> keyword ++ " (" ++ String.fromInt count ++ ")")
-                                |> String.join ", "
-                    in
-                        ( { model | itemKeywordCounts = Just keywordCounts, receivedData = "Keywords: " ++ keywordsString }, Cmd.none )
-                IndexedDB.ListItemsResult items ->
-                    ( { model | items = Just items}, Cmd.none )
-                
-                IndexedDB.AddItemResult ->
-                    ( model, indexedDbCmd IndexedDB.listItems )
+                Err (IndexedDB.StatusError err) ->
+                    ( { model | receivedData = "IndexedDB error: " ++ err }, Cmd.none )
+                Err (IndexedDB.CommandError cmd err) ->
+                    ( { model | receivedData = "IndexedDB command " ++ IndexedDB.commandToString cmd ++ " error: " ++ err }, Cmd.none )
+                Err _ -> 
+                    ( { model | receivedData = "Unhandled IndexedDB error." }, Cmd.none )
+                Ok res ->
+                    case res of
+                        IndexedDB.OpenResult status ->
+                            ( { model | indexedDBStatus = status }, Cmd.none )
+                        IndexedDB.FindItemResult maybeItem ->
+                            case maybeItem of
+                                Just item ->
+                                    ( { model | receivedData = "Found item: " ++ item.title }, Cmd.none )
+                                Nothing ->
+                                    ( { model | receivedData = "Item not found." }, Cmd.none )
+                        IndexedDB.ListItemKeywordsResult keywordCounts ->
+                            let
+                                keywordsString = 
+                                    keywordCounts
+                                        |> Dict.toList
+                                        |> List.map (\(keyword, count) -> keyword ++ " (" ++ String.fromInt count ++ ")")
+                                        |> String.join ", "
+                            in
+                                ( { model | itemKeywordCounts = Just keywordCounts, receivedData = "Keywords: " ++ keywordsString }, Cmd.none )
+                        IndexedDB.ListItemsResult items ->
+                            ( { model | items = Just (Debug.log "Found items: " items) }, Cmd.none )
+                        
+                        IndexedDB.AddItemResult ->
+                            ( model, indexedDbCmd IndexedDB.listItems )
 
-                IndexedDB.UnknownResult ->
-                    ( { model | receivedData = "Received unknown IndexedDB result." }, Cmd.none )
+                        IndexedDB.UnknownResult ->
+                            ( { model | receivedData = "Received unknown IndexedDB result." }, Cmd.none )
 
         LinkClicked urlRequest ->
             case urlRequest of
@@ -795,18 +818,36 @@ pageItems model =
             case maybeItems of
                 Just items ->
                     if List.isEmpty items then
-                        p [] [ text "No keywords found." ]
+                        p [] [ text "No items found." ]
                     else
                         viewItemList model items
                 Nothing ->
                     p [] [ text "Loading..." ]
+        
+        titleErrors : Html Msg
+        titleErrors =
+            Item.itemFormError .title model.itemForm.title
+            |> List.map (\err -> div [ class "text-sm text-warning" ] [ text err ])
+            |> Html.div []
+
+        epcErrors : Html Msg
+        epcErrors =
+            Item.itemFormError .epc model.itemForm.epc
+            |> List.map (\err -> div [ class "text-sm text-warning" ] [ text err ])
+            |> Html.div []
+
     in
         div[ class "flex flex-col" ]
             [ viewHeading
             , viewNavbar model
             , viewPanel "Add Item"
                 [ input [ placeholder "Enter item name..." , class "input input-bordered w-full max-w-xs", onInput (\title -> AddItemForm (ItemFormTitle title)) ] []
-                , Item.titleErrorField model.itemForm.title
+                , titleErrors
+
+                , label [ for "scanned-epc" ] [ text "Scanned EPC: "]
+                , input [ id "scanned-epc", class "input", disabled True, value model.itemForm.epc ] []
+                , epcErrors -- shouldn't be any errors here since it's read-only
+
                 , button [ class "btn btn-secondary", onClick AddItemFormSubmit ] [ text "Add Item" ]
                 ]
             , panelItems
@@ -905,6 +946,7 @@ viewDebugCmd model =
         , button [ class "btn", onClick (ReceiveData [0xf0, 0x03, 0x04, 0x00, 0x09] ) ] [text "Receive successful cmd 0x4"]
         , button [ class "btn", onClick (ReceiveData [0xf4, 0x03, 0x04, 0x11, 0xf4] ) ] [text "Receive error cmd 0x4"]
         , button [ class "btn", onClick (SendCommand VH88.startListingTags) ] [text "Debug start listing tags"]
+        , button [ class "btn", onClick (ReceiveResponse (VH88.Command.CommandWithArgs (VH88.Command.HostComputerCardReading, [0xe2, 0x0, 0x47, 0x18, 0xb8, 0x30, 0x64, 0x26, 0x7b, 0xc2, 0x1, 0xc])))] [ text "Pretend scan EPC"]
         ]
     , viewPanel "Debug Info"
         [ viewPendingCommands model

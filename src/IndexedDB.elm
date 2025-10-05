@@ -3,6 +3,7 @@ import Json.Decode
 import Json.Encode
 import Task
 import Dict exposing (Dict)
+import Item exposing (Item)
 
 type DBStatus = StatusNone | StatusOpened
 
@@ -14,21 +15,6 @@ type alias IndexedDB  = { }
 new : IndexedDB
 new = { }
 
-
-type alias Item = { title: String }
-
-itemEncoder : Item -> Json.Encode.Value
-itemEncoder item =
-    Json.Encode.object 
-        [ ("title", Json.Encode.string item.title) 
-        ]
-
-itemDecoder : Json.Decode.Decoder Item
-itemDecoder =
-    Json.Decode.map Item
-        (Json.Decode.field "title" Json.Decode.string)
-
-
 {--
     KeywordCount is a json object with dynamic keys (the keywords) and integer values (the counts).
 --} 
@@ -38,6 +24,32 @@ keywordCountDecoder : Json.Decode.Decoder KeywordCount
 keywordCountDecoder =
     Json.Decode.dict Json.Decode.int
 
+commandStringDict : Dict String Command
+commandStringDict =
+    Dict.fromList
+        [ ("findItem", FindItem)
+        , ("listItemKeywords", ListItemKeywords)
+        , ("listItems", ListItems)
+        , ("open", Open)
+        , ("addItem", AddItem)
+        ]
+
+type Command = FindItem
+             | ListItemKeywords
+             | ListItems
+             | Open
+             | AddItem
+             | Unknown
+            
+commandFromString : String -> Command
+commandFromString str =
+    Dict.get str commandStringDict
+        |> Maybe.withDefault Unknown
+    
+commandToString : Command -> String
+commandToString cmd =
+    Dict.foldl (\k v acc -> if v == cmd then k else acc) "unknown" commandStringDict
+
 
 type IndexedDBResult = FindItemResult (Maybe Item)
                      | ListItemKeywordsResult KeywordCount
@@ -45,33 +57,55 @@ type IndexedDBResult = FindItemResult (Maybe Item)
                      | OpenResult DBStatus
                      | AddItemResult
                      | UnknownResult
+type IndexedDBError = UnknownError
+                    | StatusError String
+                    | CommandError Command String
 
-receive : (String, Json.Decode.Value) -> IndexedDBResult
+receive : (String, Json.Decode.Value) -> Result IndexedDBError IndexedDBResult
 receive (cmd, value) = 
-    case cmd of
-        "openResult" ->
-            OpenResult StatusOpened
-        "findItemResult" ->
-            case Json.Decode.decodeValue itemDecoder value of
-                Ok item ->
-                    FindItemResult (Just item)
-                Err _ ->
-                    FindItemResult Nothing
-        "listItemKeywordsResult" ->
-            case Json.Decode.decodeValue keywordCountDecoder value of
-                Ok keywords ->
-                    ListItemKeywordsResult keywords
-                Err _ ->
-                    ListItemKeywordsResult Dict.empty
-        "listItemsResult" ->
-            case Json.Decode.decodeValue (Json.Decode.list itemDecoder) value of
-                Ok items ->
-                    ListItemsResult items
-                Err _ ->
-                    ListItemsResult []
-        "addItemResult" ->
-            AddItemResult
-        _ -> UnknownResult
+    -- cmd looks something like "openResult", "findItemResult", "findItemError", "addItemError"
+    -- so it will always end with "Result" or "Error"
+    -- let's first split it by "Result" or "Error"
+    let
+        ( baseCmd, status ) =
+            if String.endsWith "Result" cmd then
+                ( String.dropRight 6 cmd, "Result" )
+            else if String.endsWith "Error" cmd then
+                ( String.dropRight 5 cmd, "Error" )
+            else
+                ( cmd, "Unknown" )
+    in
+        case status of
+            "Error" ->
+                Err <| CommandError (commandFromString baseCmd) (Json.Decode.decodeValue Json.Decode.string value |> Result.withDefault "Unknown error")
+            "Result" ->
+                Ok <| case baseCmd of
+                    "open" ->
+                        OpenResult StatusOpened
+                    "findItem" ->
+                        case Json.Decode.decodeValue Item.decoder value of
+                            Ok item ->
+                                FindItemResult (Just item)
+                            Err _ ->
+                                FindItemResult Nothing
+                    "listItemKeywords" ->
+                        case Json.Decode.decodeValue keywordCountDecoder value of
+                            Ok keywords ->
+                                ListItemKeywordsResult keywords
+                            Err _ ->
+                                ListItemKeywordsResult Dict.empty
+                    "listItems" ->
+                        case Json.Decode.decodeValue (Json.Decode.list Item.decoder) value of
+                            Ok items ->
+                                ListItemsResult items
+                            Err _ ->
+                                ListItemsResult []
+                    "addItem" ->
+                        AddItemResult
+                    _ ->
+                        UnknownResult
+            _ ->
+                UnknownError |> Err -- should not happen
 
 
     
@@ -96,7 +130,7 @@ listItems =
 
 addItem : Item -> IndexedDbCmdArg
 addItem item =
-    ( "addItem", itemEncoder item )
+    ( "addItem", Item.encoder item )
 
 open : IndexedDbCmdArg
 open =

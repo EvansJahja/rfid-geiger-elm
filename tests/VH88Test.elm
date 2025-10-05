@@ -68,10 +68,12 @@ suite =
                         bytes = [ 240 , 14 , 225 , 226 , 0 , 71 , 24 , 184 , 48 , 100 , 38 , 123 , 194 , 1 , 12 , 36 , 241 , 3 , 1 , 0 , 11 ]
                         fifo = Fifo.fromList bytes
                         (resultPacket, _) = VH88.fifoBytesToPacket fifo
+
+                        expectedResponse = Command.CommandWithArgs (Command.HostComputerCardReading, [0xe2, 0x0, 0x47, 0x18, 0xb8, 0x30, 0x64, 0x26, 0x7b, 0xc2, 0x1, 0xc])
                     in
                     case resultPacket of
-                        Ok (Packet.Response (Command.CommandWithArgs (cmd, args))) ->
-                            Expect.equal (Command.HostComputerCardReading) cmd
+                        Ok (Packet.Response (resp)) ->
+                            Expect.equal expectedResponse resp
 
                         _ ->
                             Expect.fail "Fail to parse packet"

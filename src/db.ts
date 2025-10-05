@@ -5,6 +5,7 @@ import { openDB, deleteDB, wrap, unwrap, DBSchema, IDBPDatabase } from 'idb';
 
 
 type ItemValue = {
+    epc : string;
     title: string;
     imageUrl : string | undefined;
     keywords: string[];
@@ -12,10 +13,11 @@ type ItemValue = {
 
 export interface MyNewDBSchema extends DBSchema {
     item: {
-        key: string; // title is the key, which is a string
+        key: string; // epc is the key, which is a string
         value: ItemValue; // The structure of the stored data
         indexes: {
-            keywords: string; // The index key type is string (individual keyword)
+            byKeyword: string; // The index key type is string (individual keyword)
+            byTitle: string; 
         };
     };
 
@@ -34,11 +36,12 @@ export async function open() {
         upgrade(db, oldVersion, newVersion, transaction) {
             if (oldVersion < 1) {
                 console.log("Upgrading IndexedDB to version 1");
-                const itemObjStore = db.createObjectStore("item", { keyPath: "title"});
+                const itemObjStore = db.createObjectStore("item", { keyPath: "epc"});
                 console.log("Object store 'item' created.");
 
                 // add multientry index to item
-                itemObjStore.createIndex("keywords", "keywords", { multiEntry: true });
+                itemObjStore.createIndex("byKeyword", "keywords", { multiEntry: true });
+                itemObjStore.createIndex("byTitle", "title");
             }
         }
     });
@@ -50,7 +53,7 @@ export async function open() {
 
 class DB {
     // use type annotation for db scema
-    // db schema: item has the primary key title (string), and contents (list of strings)
+    // db schema: item has the primary key epc (string), and contents (list of strings)
 
 
     db : IDBPDatabase <MyNewDBSchema>;
@@ -60,12 +63,16 @@ class DB {
     }
 
 
-    async findItem(title: string) {
-        return await this.db.get('item', title);
+    async findItem(epc: string) {
+        return await this.db.get('item', epc);
+    }
+
+    async findItemByTitle(title: string) {
+        return await this.db.getFromIndex('item', 'byTitle', title);
     }
 
     async listItemKeywords()  : Promise<Record<string, number>> {
-        const keywords = await this.db.getAllKeysFromIndex('item', 'keywords');
+        const keywords = await this.db.getAllKeysFromIndex('item', 'byKeyword');
         const uniqueKeywordsAndCount = keywords.reduce((acc: Record<string, number>, keyword) => {
             acc[keyword] = (acc[keyword] || 0) + 1;
             return acc;

@@ -76,54 +76,41 @@ app.ports.takePicture.subscribe(async function() {
 
 app.ports.indexedDbCmd.subscribe(async function([cmd, args]) {
     console.log("Received IndexedDB command from Elm:", cmd, args);
-    switch (cmd) {
-        case "open": {
+    
+    try {
+        // Special case: "open" command
+        if (cmd === "open") {
             if (!db) {
                 db = await open();
             }
             app.ports.indexedDbSub.send(["openResult", null]);
-            break;
-        }
-        case "findItem": {
-            if (!db) {
-                db = await open();
-            }
-            const item = await db.findItem(args);
-            console.log("Found item:", item);
-            app.ports.indexedDbSub.send(["findItemResult", item]);
-            break;
-        }
-        case "listItemKeywords": {
-            if (!db) {
-                db = await open();
-            }
-            const keywordsAndCount = await db.listItemKeywords();
-            console.log("Found keywords:", keywordsAndCount);
-            app.ports.indexedDbSub.send(["listItemKeywordsResult", keywordsAndCount]);
-            break;
-        }
-        case "addItem": {
-            if (!db) {
-                db = await open();
-            }
-            try {
-                await db.addItem(args);
-                app.ports.indexedDbSub.send(["addItemResult", null]);
-            } catch (error) {
-                console.error("Error adding item:", error);
-            }
-            break;
+            return;
         }
 
-        case "listItems": {
-            if (!db) {
-                db = await open();
-            }
-            const items = await db.listItems();
-            console.log("Listing items:", items);
-            app.ports.indexedDbSub.send(["listItemsResult", items]);
-            break;
+        // Ensure DB is open for all other commands
+        if (!db) {
+            db = await open();
         }
+
+        // Dynamically call DB methods based on command name
+        const methodName = cmd;
+        
+        if (typeof db[methodName] === 'function') {
+            const result = await db[methodName](args);
+            console.log(`Result from ${methodName}:`, result);
+            
+            // Send result back with conventional naming: commandNameResult
+            const resultEvent = `${cmd}Result`;
+            app.ports.indexedDbSub.send([resultEvent, result ?? null]);
+        } else {
+            console.error(`Unknown DB method: ${methodName}`);
+            const errorEvent = `${cmd}Error`;
+            app.ports.indexedDbSub.send([errorEvent, `Unknown command: ${cmd}`]);
+        }
+    } catch (error) {
+        console.error(`Error executing ${cmd}:`, error);
+        const errorEvent = `${cmd}Error`;
+        app.ports.indexedDbSub.send([errorEvent, error.message || "Unknown error"]);
     }
 });
 
