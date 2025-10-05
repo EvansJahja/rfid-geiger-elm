@@ -75,7 +75,6 @@ app.ports.takePicture.subscribe(async function() {
 });
 
 app.ports.indexedDbCmd.subscribe(async function([cmd, args]) {
-    console.log("Received IndexedDB command from Elm:", cmd, args);
     
     try {
         // Special case: "open" command
@@ -97,7 +96,6 @@ app.ports.indexedDbCmd.subscribe(async function([cmd, args]) {
         
         if (typeof db[methodName] === 'function') {
             const result = await db[methodName](args);
-            console.log(`Result from ${methodName}:`, result);
             
             // Send result back with conventional naming: commandNameResult
             const resultEvent = `${cmd}Result`;

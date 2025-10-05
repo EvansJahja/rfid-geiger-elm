@@ -13,7 +13,7 @@ import Html.Attributes as Attrs exposing (..)
 import Html.Events exposing (on, onBlur, onCheck, onClick, onInput)
 import IndexedDB exposing (IndexedDB, IndexedDBError, KeywordCount)
 import Item
-import Json.Decode as Decode
+import Json.Decode as Decode exposing (index)
 import Json.Encode as Encode
 import Monocle.Compose
 import Monocle.Iso exposing (Iso)
@@ -688,7 +688,7 @@ update msg (Model model) =
                             ( Model { model | itemKeywordCounts = Just keywordCounts, receivedData = "Keywords: " ++ keywordsString }, Cmd.none )
 
                         IndexedDB.ListItemsResult items ->
-                            ( Model { model | items = Just (Debug.log "Found items: " items) }, Cmd.none )
+                            ( Model { model | items = Just items }, Cmd.none )
 
                         IndexedDB.AddItemResult ->
                             -- We're now clearing the item form validation errors on successful add
@@ -708,17 +708,17 @@ update msg (Model model) =
         LinkClicked urlRequest ->
             case urlRequest of
                 Browser.Internal url ->
-                    ( Model model, Nav.pushUrl model.key (Debug.log "Navigating to internal URL" (Url.toString url)) )
+                    ( Model model, Nav.pushUrl model.key (Url.toString url) )
 
                 Browser.External href ->
-                    ( Model model, Nav.load (Debug.log "Navigating to external URL" href) )
+                    ( Model model, Nav.load href )
 
         UrlChanged url ->
             let
                 newPage =
                     UrlParser.parse routeParser url |> Maybe.withDefault PageSettings
             in
-            ( Model { model | url = Debug.log "URL changed" url, page = newPage }
+            ( Model { model | url = url, page = newPage }
             , message (PageChange newPage (pageSpecificCmds newPage))
             )
 
@@ -734,10 +734,10 @@ update msg (Model model) =
                 itemForm =
                     model.itemForm
 
-                newModel =
+                ( newModel, cmdMaybeAddItem ) =
                     case Item.decodeForm itemForm of
-                        Ok _ ->
-                            model
+                        Ok item ->
+                            ( { model | itemForm = Item.defaultForm }, indexedDbCmd (IndexedDB.putItem item) )
 
                         Err validationErrors ->
                             let
@@ -750,16 +750,7 @@ update msg (Model model) =
                                 itemFormValidationErrors =
                                     { modelItemFormValidationErrors | formErrors = validationErrorString }
                             in
-                            { model | itemFormValidationErrors = itemFormValidationErrors }
-
-                cmdMaybeAddItem =
-                    case Item.decodeForm itemForm of
-                        Ok item ->
-                            -- TODO: We're using putItem here which will overwrite existing items with the same EPC
-                            indexedDbCmd (IndexedDB.putItem item)
-
-                        Err _ ->
-                            Cmd.none
+                            ( { model | itemFormValidationErrors = itemFormValidationErrors }, Cmd.none )
             in
             ( Model newModel, cmdMaybeAddItem )
 
@@ -807,7 +798,7 @@ message =
 delay : Float -> msg -> Cmd msg
 delay sleepMs msg =
     Process.sleep sleepMs
-        |> Task.andThen (always <| Task.succeed msg)
+        |> Task.map (always <| msg)
         |> Task.perform identity
 
 

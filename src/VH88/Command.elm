@@ -1,15 +1,15 @@
-module VH88.Command exposing 
-    ( Command(..) 
-    , CommandWithArgs(..) 
-    , commandToInt
+module VH88.Command exposing
+    ( Command(..)
+    , CommandWithArgs(..)
     , commandByteToCommand
+    , commandToInt
     , listIntToCommandWithArgs
     )
 
 
 type Command
     = SetDuplicateFilter
-    | GetDuplicateFilter  
+    | GetDuplicateFilter
     | SetRfidPower
     | ReadWorkingParameters
     | SetTagFilter
@@ -40,11 +40,16 @@ type Command
     | SaveCurrentInventoryDataToUDisk
     | StartListingTags
 
+
+
 -- we need to convert to bytes
 
-type CommandByte = CommandByte Int
 
-commandMappings : List (Command, CommandByte)
+type CommandByte
+    = CommandByte Int
+
+
+commandMappings : List ( Command, CommandByte )
 commandMappings =
     [ ( SetDuplicateFilter, CommandByte 0x02 )
     , ( GetDuplicateFilter, CommandByte 0x03 )
@@ -76,48 +81,58 @@ commandMappings =
     , ( DownloadUDiskInventoryData, CommandByte 0x22 )
     , ( DeleteUDiskInventoryFile, CommandByte 0x23 )
     , ( SaveCurrentInventoryDataToUDisk, CommandByte 0x24 )
-    , ( StartListingTags, CommandByte 0xEE)
+    , ( StartListingTags, CommandByte 0xEE )
     ]
+
 
 intToCommandByte : Int -> CommandByte
 intToCommandByte byte =
     CommandByte byte
 
+
 commandToCommandByte : Command -> CommandByte
 commandToCommandByte command =
     commandMappings
-        |> List.filter (\(cmd, _) -> cmd == command)
+        |> List.filter (\( cmd, _ ) -> cmd == command)
         |> List.head
         |> Maybe.map Tuple.second
-        |> Maybe.withDefault (CommandByte 0x00) -- default to 0x00 if not found
+        |> Maybe.withDefault (CommandByte 0x00)
+
+
+
+-- default to 0x00 if not found
+
 
 commandToInt : Command -> Int
 commandToInt command =
     let
-        (CommandByte byte) = commandToCommandByte command
+        (CommandByte byte) =
+            commandToCommandByte command
     in
     byte
-        
+
+
 commandByteToCommand : CommandByte -> Maybe Command
 commandByteToCommand (CommandByte byte) =
     commandMappings
-        |> List.filter (\(_, (CommandByte b)) -> b == byte)
+        |> List.filter (\( _, CommandByte b ) -> b == byte)
         |> List.head
         |> Maybe.map Tuple.first
 
-type CommandWithArgs = CommandWithArgs (Command, List Int)
+
+type CommandWithArgs
+    = CommandWithArgs ( Command, List Int )
+
 
 listIntToCommandWithArgs : List Int -> Maybe CommandWithArgs
 listIntToCommandWithArgs contents =
     case contents of
         cmd :: params ->
             commandByteToCommand (intToCommandByte cmd)
-            |> Maybe.map
-                (\command ->
-                    CommandWithArgs (command, params)
-                )
-                |> Just
-                |> Maybe.withDefault Nothing
+                |> Maybe.map
+                    (\command ->
+                        CommandWithArgs ( command, params )
+                    )
 
         _ ->
             Nothing
