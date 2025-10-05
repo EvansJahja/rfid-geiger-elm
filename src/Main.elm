@@ -937,7 +937,6 @@ pageAddItems (Model model) =
                     Just dataUrl ->
                         img [ id "item-picture", class "rounded-xl max-w-xs self-center",  src dataUrl ] []
                     Nothing ->
-                        -- img [ id "item-picture", class "rounded-xl max-w-xs self-center",  src "https://placehold.co/400x600" ] []
                         p [] [ text "No picture taken." ]
                 , button [ class "btn btn-secondary", onClick (TakePicture modelImageDataUrlLens) ] [ text "Take picture" ]
 
