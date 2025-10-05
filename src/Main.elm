@@ -765,10 +765,10 @@ viewNavbar (Model model) =
         ]
 
 
-listItem : String -> String -> Html Msg
-listItem name subtitle =
+listItem : String -> String -> DataUrl ->  Html Msg
+listItem name subtitle imageDataUrl =
     li [ class "list-row" ]
-        [ div [] [ Html.img [ class "size-10 rounded-box", src "https://img.daisyui.com/images/profile/demo/1@94.webp" ] [] ]
+        [ div [] [ Html.img [ class "size-10 rounded-box", src imageDataUrl ] [] ]
         , div [ class "flex justify-between"]
             [ div [] [ text name ]
             , div [ class "text-xs uppercase font-semibold opacity-60" ] [ text subtitle ]
@@ -778,9 +778,11 @@ listItem name subtitle =
 viewItemList : Model -> List Item.Item -> Html Msg
 viewItemList model items = 
     let
+        itemImage item = item.imageDataUrl |> Maybe.withDefault "https://img.daisyui.com/images/profile/demo/1@94.webp"
+
         listItems =
             items
-                |> List.map (\item -> listItem item.title "blah")
+                |> List.map (\item -> listItem item.title "blah" (itemImage item))
     in
         ul [ class "list bg-base-100 rounded-box shadow-md" ]
             listItems
@@ -791,7 +793,7 @@ viewKeywordCountList model keywordCounts =
         listItems =
             keywordCounts
                 |> Dict.toList
-                |> List.map (\(keyword, count) -> listItem keyword (String.fromInt count))
+                |> List.map (\(keyword, count) -> listItem keyword (String.fromInt count) "https://img.daisyui.com/images/profile/demo/1@94.webp")
     in
         ul [ class "list bg-base-100 rounded-box shadow-md" ]
             listItems
@@ -933,8 +935,9 @@ pageAddItems (Model model) =
                 , label [ for "item-picture" ] [ text "Item Picture:" ]
                 , case model.itemForm.imageDataUrl of
                     Just dataUrl ->
-                        img [ id "item-picture", class "rounded shadow-md max-h-48", src dataUrl ] []
+                        img [ id "item-picture", class "rounded-xl max-w-xs self-center",  src dataUrl ] []
                     Nothing ->
+                        -- img [ id "item-picture", class "rounded-xl max-w-xs self-center",  src "https://placehold.co/400x600" ] []
                         p [] [ text "No picture taken." ]
                 , button [ class "btn btn-secondary", onClick (TakePicture modelImageDataUrlLens) ] [ text "Take picture" ]
 
