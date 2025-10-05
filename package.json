@@ -19,7 +19,8 @@
     "cap:dev": "npm run dev && npx cap sync && npx cap run android",
     "css:watch": "npx tailwindcss -i src/tailwind.css -o www/tailwind.build.css --watch",
     "live": "concurrently \"npm run webpack:serve\" \"npm run cap:run\"",
-    "live:web": "concurrently \"npm run webpack:serve\" \"npm run css:watch\""
+    "live:web": "concurrently \"npm run webpack:serve\" \"npm run css:watch\"",
+    "prepare": "ts-patch install"
   },
   "dependencies": {
     "@capacitor/app": "^7.1.0",
@@ -27,7 +28,8 @@
     "capacitor-bluetooth-serial": "file:../capacitor-bluetooth-serial",
     "elm-webpack-loader": "^8.0.0",
     "idb": "^8.0.3",
-    "tailwindcss": "^4.1.13"
+    "tailwindcss": "^4.1.13",
+    "typia": "^9.7.2"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.1.13",
@@ -38,7 +40,8 @@
     "elm-reloader": "^1.1.2",
     "elm-test": "^0.19.1-revision16",
     "ts-loader": "^9.5.4",
-    "typescript": "^5.9.3",
+    "ts-patch": "^3.3.0",
+    "typescript": "~5.9.2",
     "webpack": "^5.101.3",
     "webpack-cli": "^6.0.1",
     "webpack-dev-server": "^5.2.2"

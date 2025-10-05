@@ -867,7 +867,7 @@ pageItems model =
             [ viewHeading
             , viewNavbar model
             , viewPanel "Add Item"
-                [ input [ placeholder "Enter item name..." , class "input input-bordered w-full max-w-xs", onInput (\title -> AddItemForm (ItemFormTitle title)), onBlur (AddItemFormOnBlur "title") ] []
+                [ input [ placeholder "Enter item name..." , class "input input-bordered w-full max-w-xs", onInput (\title -> AddItemForm (ItemFormTitle title)), onBlur (AddItemFormOnBlur "title"), value model.itemForm.title ] []
                 , titleErrors
 
                 , label [ for "scanned-epc" ] [ text "Scanned EPC: "]

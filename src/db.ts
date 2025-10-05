@@ -2,13 +2,17 @@
 // that uses the idb library to interact with IndexedDB
 
 import { openDB, deleteDB, wrap, unwrap, DBSchema, IDBPDatabase } from 'idb';
+import typia, { tags } from 'typia';
 
+type Keyword = string
+               & tags.MinLength<1>
+               & tags.Pattern<"^[a-zA-Z_:]+$">;
 
 type ItemValue = {
-    epc : string;
-    title: string;
+    epc : string & tags.MinLength<24> & tags.MaxLength<24>; // epc is a string of length 24
+    title: string & tags.MinLength<1>; // title is a non-empty string
     imageUrl : string | undefined;
-    keywords: string[];
+    keywords: Keyword[];
 };
 
 export interface MyNewDBSchema extends DBSchema {
@@ -85,6 +89,7 @@ class DB {
     }
 
     async addItem(item: ItemValue) {
+        typia.assert<ItemValue>(item);
         return await this.db.add('item', item);
     }
 
