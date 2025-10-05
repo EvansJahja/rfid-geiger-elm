@@ -4,6 +4,7 @@ module VH88.Command exposing
     , commandByteToCommand
     , commandToInt
     , listIntToCommandWithArgs
+    , toString
     )
 
 
@@ -40,6 +41,101 @@ type Command
     | SaveCurrentInventoryDataToUDisk
     | StartListingTags
 
+toString : Command -> String
+toString command =
+    case command of
+        SetDuplicateFilter ->
+            "SetDuplicateFilter"
+
+        GetDuplicateFilter ->
+            "GetDuplicateFilter"
+
+        SetRfidPower ->
+            "SetRfidPower"
+
+        ReadWorkingParameters ->
+            "ReadWorkingParameters"
+
+        SetTagFilter ->
+            "SetTagFilter"
+
+        GetTagFilter ->
+            "GetTagFilter"
+
+        SetWorkingParameters ->
+            "SetWorkingParameters"
+
+        SetBluetoothKeyboardDelay ->
+            "SetBluetoothKeyboardDelay"
+
+        SetFactoryParameters ->
+            "SetFactoryParameters"
+
+        RestoreFactorySettings ->
+            "RestoreFactorySettings"
+
+        SetTime ->
+            "SetTime"
+
+        GetTime ->
+            "GetTime"
+
+        SetRfidInventoryInterval ->
+            "SetRfidInventoryInterval"
+
+        GetRfidInventoryInterval ->
+            "GetRfidInventoryInterval"
+
+        SetTidUserInventoryParameters ->
+            "SetTidUserInventoryParameters"
+
+        GetTidUserInventoryParameters ->
+            "GetTidUserInventoryParameters"
+
+        GetRfidModuleVersion ->
+            "GetRfidModuleVersion"
+
+        SwitchToScanCodeModule ->
+            "SwitchToScanCodeModule"
+
+        SwitchToRfidModule ->
+            "SwitchToRfidModule"
+
+        RestoreBluetoothFactorySettings ->
+            "RestoreBluetoothFactorySettings"
+
+        SaveBluetoothParameters ->
+            "SaveBluetoothParameters"
+
+        SetReaderId ->
+            "SetReaderId"
+
+        GetReaderId ->
+            "GetReaderId"
+
+        SetBluetoothName ->
+            "SetBluetoothName"
+
+        GetBluetoothName ->
+            "GetBluetoothName"
+
+        HostComputerCardReading ->
+            "HostComputerCardReading"
+
+        GetUDiskInventoryFileDirectory ->
+            "GetUDiskInventoryFileDirectory"
+
+        DownloadUDiskInventoryData ->
+            "DownloadUDiskInventoryData"
+
+        DeleteUDiskInventoryFile ->
+            "DeleteUDiskInventoryFile"
+
+        SaveCurrentInventoryDataToUDisk ->
+            "SaveCurrentInventoryDataToUDisk"
+
+        StartListingTags ->
+            "StartListingTags"
 
 
 -- we need to convert to bytes

@@ -59,7 +59,7 @@ addPendingCommand : PendingCommand -> Time.Posix -> Command.Command -> PendingCo
 addPendingCommand dict time cmd =
     let
         key =
-            Debug.toString cmd
+            Command.toString cmd
     in
     Dict.insert key { command = cmd, sentTime = time } dict
 
@@ -68,7 +68,7 @@ removePendingCommand : PendingCommand -> Command.Command -> PendingCommand
 removePendingCommand dict cmd =
     let
         key =
-            Debug.toString cmd
+            Command.toString cmd
     in
     Dict.remove key dict
 
@@ -93,7 +93,7 @@ addErrorCommand : ErrorCommand -> Time.Posix -> Command.Command -> ErrorCode -> 
 addErrorCommand dict time cmd errCode =
     let
         key =
-            Debug.toString cmd
+            Command.toString cmd
     in
     Dict.insert key { command = cmd, sentTime = time, errorCode = errCode } dict
 
@@ -102,7 +102,7 @@ removeErrorCommand : ErrorCommand -> Command.Command -> ErrorCommand
 removeErrorCommand dict cmd =
     let
         key =
-            Debug.toString cmd
+            Command.toString cmd
     in
     Dict.remove key dict
 
@@ -1211,40 +1211,40 @@ viewDebugCmd (Model model) =
             , button [ class "btn", onClick (ReceiveResponse (Command.CommandWithArgs ( Command.HostComputerCardReading, [ 0xE2, 0x00, 0x47, 0x18, 0xB8, 0x30, 0x64, 0x26, 0x7B, 0xC2, 0x01, 0x0C ] ))) ] [ text "Pretend scan EPC" ]
             , button [ class "btn btn-error", onClick (IndexedDBCommand IndexedDB.deleteDB) ] [ text "Delete database" ]
             ]
-        , viewPanel "Debug Info"
-            [ viewPendingCommands (Model model)
-            , viewErrorCommands (Model model)
-            , ul [] (model.recvBuffer |> Fifo.toList |> List.map (\b -> Html.li [] [ text (String.fromInt b) ]))
-            ]
+        -- , viewPanel "Debug Info"
+        --     [ viewPendingCommands (Model model)
+        --     , viewErrorCommands (Model model)
+        --     , ul [] (model.recvBuffer |> Fifo.toList |> List.map (\b -> Html.li [] [ text (String.fromInt b) ]))
+        --     ]
         ]
 
 
-viewPendingCommands : Model -> Html Msg
-viewPendingCommands (Model model) =
-    div []
-        [ h1 [] [ text "Pending Commands" ]
-        , ul []
-            (Dict.values model.pendingCommand
-                |> List.map
-                    (\cmd ->
-                        Html.li [] [ text ("Command: " ++ Debug.toString cmd.command ++ ", Pending for: " ++ humanTimeDifference cmd.sentTime model.time) ]
-                    )
-            )
-        ]
+-- viewPendingCommands : Model -> Html Msg
+-- viewPendingCommands (Model model) =
+--     div []
+--         [ h1 [] [ text "Pending Commands" ]
+--         , ul []
+--             (Dict.values model.pendingCommand
+--                 |> List.map
+--                     (\cmd ->
+--                         Html.li [] [ text ("Command: " ++ Command.toString cmd.command ++ ", Pending for: " ++ humanTimeDifference cmd.sentTime model.time) ]
+--                     )
+--             )
+--         ]
 
 
-viewErrorCommands : Model -> Html Msg
-viewErrorCommands (Model model) =
-    div []
-        [ h1 [] [ text "Error Commands" ]
-        , ul []
-            (Dict.values model.errorCommand
-                |> List.map
-                    (\cmd ->
-                        Html.li [] [ text ("Command: " ++ Debug.toString cmd.command ++ ", Error code: " ++ errorCodeToString cmd.errorCode ++ ", Error at: " ++ humanTimeDifference cmd.sentTime model.time ++ " ago") ]
-                    )
-            )
-        ]
+-- viewErrorCommands : Model -> Html Msg
+-- viewErrorCommands (Model model) =
+--     div []
+--         [ h1 [] [ text "Error Commands" ]
+--         , ul []
+--             (Dict.values model.errorCommand
+--                 |> List.map
+--                     (\cmd ->
+--                         Html.li [] [ text ("Command: " ++ Command.toString cmd.command ++ ", Error code: " ++ errorCodeToString cmd.errorCode ++ ", Error at: " ++ humanTimeDifference cmd.sentTime model.time ++ " ago") ]
+--                     )
+--             )
+--         ]
 
 
 viewPanelWorkingParameter : WorkingParameters -> Html Msg
