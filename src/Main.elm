@@ -4,7 +4,7 @@ import Browser
 import Browser.Navigation as Nav
 import Url
 import Url.Parser as UrlParser exposing (Parser, (</>), int, oneOf, s, string)
-import Html exposing (Html, button, div, input, text, select, option, h1, ul, li, label, p)
+import Html exposing (Html, button, div, input, text, select, option, h1, ul, li, label, p, img)
 import Html.Events exposing (onClick, onInput, onCheck, on)
 import Html.Attributes exposing (..)
 import Html.Attributes as Attrs
@@ -37,6 +37,10 @@ import IndexedDB exposing (KeywordCount)
 import Item
 import Html.Events exposing (onBlur)
 import IndexedDB exposing (IndexedDBError)
+import Monocle.Lens exposing (Lens)
+import Monocle.Compose
+import Monocle.Iso exposing (Iso)
+import Html exposing (a)
 
 -- STATE MANAGEMENT TYPES 
 
@@ -106,16 +110,18 @@ type alias Inventory = Dict EPC InventoryItem
 routeParser : Parser (Page -> a) a
 routeParser =
   oneOf
-    [ UrlParser.map PageCategories   (s "categories")
+    [ UrlParser.map PageCategories  (s "categories")
     , UrlParser.map PageItems       (s "items")
     , UrlParser.map PageLocation    (s "location")
     , UrlParser.map PageSettings    (s "settings")
+    , UrlParser.map PageAddItems    (s "add-item")
     ]
 
 
 
 type Page = PageCategories
           | PageItems
+          | PageAddItems
           | PageLocation
           | PageSettings
           | PageTODO
@@ -158,9 +164,12 @@ type alias Model =
     , itemForm : Item.Form
     , itemFormValidationErrors : Item.ValidationErrors
     , items : Maybe (List Item.Item)
+    , takePictureLens : Maybe (Lens BoxedModel (Maybe DataUrl))
 
     , page : Page
     }
+
+type BoxedModel = BoxedModel Model
 
 type alias DataUrl = String
 
@@ -216,6 +225,7 @@ init flags url key =
             , itemForm = Item.defaultForm
             , itemFormValidationErrors = Item.emptyValidationErrors
             , items = Nothing
+            , takePictureLens = Nothing
             , page = page
             }
         , initCmd
@@ -243,7 +253,7 @@ type Msg
     | SetPowerLevel Int
     | ClearInventory
     | EPCFilter EPCFilterOperation
-    | TakePicture
+    | TakePicture (Lens BoxedModel (Maybe DataUrl))
     | PictureResult DataUrl
     | FindItem String
     | ListItemKeywords
@@ -504,10 +514,18 @@ update msg model =
                     ( { model | epcFilter = Set.insert epc model.epcFilter }, Cmd.none )
                 Remove epc ->
                     ( { model | epcFilter = Set.remove epc model.epcFilter }, Cmd.none )
-        TakePicture ->
-            ( model, takePicture () )
+        TakePicture (lens) ->
+            ( { model | takePictureLens = Just lens }, takePicture () )
         PictureResult dataUrl ->
-            ( { model | receivedData = "Received picture data URL of length: " ++ String.fromInt (String.length dataUrl) }, Cmd.none )
+            case model.takePictureLens of
+                Just lens ->
+                    let
+                        updatedBoxedModel =  lens.set (Just dataUrl) (BoxedModel model)
+                        (BoxedModel newModel) = updatedBoxedModel
+                    in
+                        ( { newModel | takePictureLens = Nothing }, Cmd.none )
+                Nothing ->
+                    ( model, Cmd.none )
         PageChange newPage cmds->
             ( { model | page = newPage }, Cmd.batch cmds )
         FindItem name -> 
@@ -586,6 +604,18 @@ update msg model =
             let
                 itemForm = model.itemForm
 
+                newModel = 
+                    case Item.decodeForm itemForm of
+                        Ok _ -> model
+                        Err validationErrors ->
+                            let
+                                modelItemFormValidationErrors = model.itemFormValidationErrors
+                                validationErrorString = validationErrors |> List.map Item.errorToString
+                                itemFormValidationErrors = { modelItemFormValidationErrors | formErrors = validationErrorString }
+                            in
+
+                            { model | itemFormValidationErrors = itemFormValidationErrors }
+
                 cmdMaybeAddItem = 
                     case Item.decodeForm itemForm of
                         Ok item ->
@@ -595,7 +625,7 @@ update msg model =
 
                 
             in
-                (model, cmdMaybeAddItem)
+                (newModel, cmdMaybeAddItem)
         AddItemFormOnBlur fieldName ->
             let
                 itemForm = model.itemForm
@@ -729,6 +759,7 @@ viewNavbar model =
     div [ Attrs.attribute "role" "tablist",  class " tabs tabs-border shadow-sm justify-center pb-8" ]
         [ link "/categories" PageCategories "Categories" [ message ListItemKeywords]
         , link "/items" PageItems "Items" []
+        , link "/add-item" PageAddItems "Add Item" []
         , link "/location" PageLocation "Location" []
         , link "/settings" PageSettings "Settings" []
         , Html.a [ Attrs.attribute "role" "tab", class (isActive PageTODO ++ "text-xs tab") ] [ text "Ownership" ]
@@ -795,6 +826,8 @@ view model =
             pageSettings model
         PageItems ->
             pageItems model
+        PageAddItems ->
+            pageAddItems model
         rest  ->  Debug.todo ("Implement other pages: " ++ (Debug.toString rest))
     ]
 
@@ -853,6 +886,17 @@ pageItems model =
                         viewItemList model items
                 Nothing ->
                     p [] [ text "Loading..." ]
+
+    in
+        div[ class "flex flex-col" ]
+            [ viewHeading
+            , viewNavbar model
+            , panelItems
+            ]
+
+pageAddItems : Model -> Html Msg
+pageAddItems model =
+    let
         titleErrors =
             model.itemFormValidationErrors.title
                 |> List.map (\err -> div [ class "text-sm text-warning" ] [ text err ])
@@ -861,6 +905,27 @@ pageItems model =
             model.itemFormValidationErrors.formErrors
                 |> List.map (\err -> div [ class "text-sm text-error" ] [ text err ])
                 |> Html.div []
+        
+        isoModelBoxedModel : Iso BoxedModel Model 
+        isoModelBoxedModel =
+            Iso (\(BoxedModel m) -> m) (\m -> BoxedModel m)
+
+        formImageDataUrlLens : Lens Item.Form (Maybe DataUrl)
+        formImageDataUrlLens =
+            Lens .imageDataUrl (\b a -> { a | imageDataUrl = b })
+
+        modelFormLens : Lens Model Item.Form
+        modelFormLens =
+            Lens .itemForm (\b a -> { a | itemForm = b })
+
+        modelImageDataUrlLens : Lens Model (Maybe DataUrl)
+        modelImageDataUrlLens =
+            modelFormLens |> Monocle.Compose.lensWithLens formImageDataUrlLens
+
+
+        boxedModelDataUrlLens : Lens BoxedModel (Maybe DataUrl)
+        boxedModelDataUrlLens =  Monocle.Compose.isoWithLens modelImageDataUrlLens isoModelBoxedModel  
+
 
     in
         div[ class "flex flex-col" ]
@@ -874,10 +939,18 @@ pageItems model =
                 , input [ id "scanned-epc", class "input", disabled True, value model.itemForm.epc ] []
                 -- , epcErrors -- shouldn't be any errors here since it's read-only
 
+                -- take picture
+                , label [ for "item-picture" ] [ text "Item Picture:" ]
+                , case model.itemForm.imageDataUrl of
+                    Just dataUrl ->
+                        img [ id "item-picture", class "rounded shadow-md max-h-48", src dataUrl ] []
+                    Nothing ->
+                        p [] [ text "No picture taken." ]
+                , button [ class "btn btn-secondary", onClick (TakePicture boxedModelDataUrlLens) ] [ text "Take picture" ]
+
                 , formErrors
                 , button [ class "btn btn-secondary", onClick AddItemFormSubmit ] [ text "Add Item" ]
                 ]
-            , panelItems
             ]
 
 
@@ -886,7 +959,7 @@ view2 model =
         [ viewPanel ""
             [ p [] [text ("Platform: " ++ model.platform)]
             , button [class "btn btn-primary"] [ text "DaisyUI Button"]
-            , div [] [button [ onClick TakePicture ] [ text "Take picture" ]]
+            -- , div [] [button [ onClick TakePicture ] [ text "Take picture" ]]
             , div [] [button [ onClick RequestDeviceList ] [ text "Connect to Serial Port" ]]
             , div [] [ input [ placeholder "Enter text..." ] [] ]
             , div [] [ text <| "Received: " ++ model.receivedData ]

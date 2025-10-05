@@ -9,6 +9,7 @@ type alias Item =
     { title: String
     , epc: String
     , keywords: List String
+    , imageDataUrl : Maybe String
     }
 
 
@@ -18,14 +19,20 @@ encoder item =
         [ ("title", Json.Encode.string item.title)
         , ("epc", Json.Encode.string item.epc)
         , ("keywords", Json.Encode.list Json.Encode.string item.keywords)
+        , ("imageDataUrl", 
+            case item.imageDataUrl of
+                Just url -> Json.Encode.string url
+                Nothing -> Json.Encode.null
+          )
         ]
 
 decoder : Json.Decode.Decoder Item
 decoder =
-    Json.Decode.map3 Item
+    Json.Decode.map4 Item
         (Json.Decode.field "title" Json.Decode.string)
         (Json.Decode.field "epc" Json.Decode.string)
         (Json.Decode.field "keywords" (Json.Decode.list Json.Decode.string))
+        (Json.Decode.field "imageDataUrl" (Json.Decode.nullable Json.Decode.string))
 
 
 
@@ -33,6 +40,7 @@ type alias Form =
     { title : String
     , epc : String
     , keywords : List String
+    , imageDataUrl : Maybe String
     }
 
 type alias ValidationErrors =
@@ -52,6 +60,7 @@ defaultForm  =
     { title = ""
     , epc = ""
     , keywords = []
+    , imageDataUrl = Nothing
     }
 
 type Error 
@@ -87,12 +96,22 @@ keywords_ : Decoder Form Error (List String)
 keywords_ =
     Decoder.lift .keywords keywords
 
+imageDataUrl : Decoder (Maybe String) Error (Maybe String)
+imageDataUrl =
+    Decoder.identity
+
+imageDataUrl_ : Decoder Form Error (Maybe String)
+imageDataUrl_ =
+    Decoder.lift .imageDataUrl imageDataUrl
+
 form : Decoder Form Error Item
 form =
     Decoder.top Item
         |> Decoder.field title_
         |> Decoder.field epc_
         |> Decoder.field keywords_
+        |> Decoder.field imageDataUrl_
+
 
 decodeForm : Form -> Result (List Error) Item
 decodeForm = Decoder.run form
