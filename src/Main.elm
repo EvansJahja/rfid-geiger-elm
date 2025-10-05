@@ -422,7 +422,7 @@ update msg model =
                                 if
                                     model.page == PageItems || model.showDebug
                                 then
-                                    { modelItemForm | epc = epcToString epc }
+                                    { modelItemForm | epc = epcToString epc}
                                 else
                                     modelItemForm
 

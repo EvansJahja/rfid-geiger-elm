@@ -8,6 +8,7 @@ import Json.Decode
 type alias Item =
     { title: String
     , epc: String
+    , keywords: List String
     }
 
 
@@ -16,19 +17,22 @@ encoder item =
     Json.Encode.object 
         [ ("title", Json.Encode.string item.title)
         , ("epc", Json.Encode.string item.epc)
+        , ("keywords", Json.Encode.list Json.Encode.string item.keywords)
         ]
 
 decoder : Json.Decode.Decoder Item
 decoder =
-    Json.Decode.map2 Item
+    Json.Decode.map3 Item
         (Json.Decode.field "title" Json.Decode.string)
         (Json.Decode.field "epc" Json.Decode.string)
+        (Json.Decode.field "keywords" (Json.Decode.list Json.Decode.string))
 
 
 
 type alias Form =
     { title : String
     , epc : String
+    , keywords : List String
     }
 
 type alias ValidationErrors =
@@ -47,6 +51,7 @@ defaultForm  : Form
 defaultForm  =
     { title = ""
     , epc = ""
+    , keywords = []
     }
 
 type Error 
@@ -74,12 +79,20 @@ epc_ : Decoder Form Error String
 epc_ =
     Decoder.lift .epc epc
 
+keywords : Decoder (List String) Error (List String)
+keywords =
+    Decoder.identity
+
+keywords_ : Decoder Form Error (List String)
+keywords_ =
+    Decoder.lift .keywords keywords
 
 form : Decoder Form Error Item
 form =
     Decoder.top Item
         |> Decoder.field title_
         |> Decoder.field epc_
+        |> Decoder.field keywords_
 
 decodeForm : Form -> Result (List Error) Item
 decodeForm = Decoder.run form
