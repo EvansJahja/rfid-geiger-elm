@@ -156,6 +156,7 @@ type alias Model =
     , indexedDBStatus : IndexedDB.DBStatus
     , itemKeywordCounts : Maybe KeywordCount
     , itemForm : Item.Form
+    , itemFormValidationErrors : Item.ValidationErrors
     , items : Maybe (List Item.Item)
 
     , page : Page
@@ -213,6 +214,7 @@ init flags url key =
             , indexedDBStatus = IndexedDB.StatusNone
             , itemKeywordCounts = Nothing
             , itemForm = Item.defaultForm
+            , itemFormValidationErrors = Item.emptyValidationErrors
             , items = Nothing
             , page = page
             }
@@ -246,9 +248,11 @@ type Msg
     | FindItem String
     | ListItemKeywords
     | IndexedDBResult (Result IndexedDB.IndexedDBError IndexedDB.IndexedDBResult)
+    | IndexedDBCommand IndexedDB.IndexedDbCmdArg 
     | PageChange Page (List (Cmd Msg))
     | AddItemForm ItemFormField
     | AddItemFormSubmit 
+    | AddItemFormOnBlur String
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
 
@@ -510,10 +514,19 @@ update msg model =
             (model, indexedDbCmd (IndexedDB.findItem name))
         ListItemKeywords ->
             (model, indexedDbCmd (IndexedDB.listItemKeywords))
+        IndexedDBCommand cmdArg ->
+            (model, indexedDbCmd cmdArg)
         IndexedDBResult result ->
             case result of
                 Err (IndexedDB.StatusError err) ->
                     ( { model | receivedData = "IndexedDB error: " ++ err }, Cmd.none )
+                Err (IndexedDB.CommandError IndexedDB.AddItem err) ->
+                    let
+                        modelItemFormValidationErrors = model.itemFormValidationErrors
+                        itemFormValidationErrors = { modelItemFormValidationErrors | formErrors = ["IndexedDB error: " ++ err] }
+                    in
+                        ( { model | itemFormValidationErrors = itemFormValidationErrors }, Cmd.none )
+                    
                 Err (IndexedDB.CommandError cmd err) ->
                     ( { model | receivedData = "IndexedDB command " ++ IndexedDB.commandToString cmd ++ " error: " ++ err }, Cmd.none )
                 Err _ -> 
@@ -541,7 +554,7 @@ update msg model =
                             ( { model | items = Just (Debug.log "Found items: " items) }, Cmd.none )
                         
                         IndexedDB.AddItemResult ->
-                            ( model, indexedDbCmd IndexedDB.listItems )
+                            ( { model | itemFormValidationErrors = Item.emptyValidationErrors }, indexedDbCmd IndexedDB.listItems )
 
                         IndexedDB.UnknownResult ->
                             ( { model | receivedData = "Received unknown IndexedDB result." }, Cmd.none )
@@ -583,6 +596,23 @@ update msg model =
                 
             in
                 (model, cmdMaybeAddItem)
+        AddItemFormOnBlur fieldName ->
+            let
+                itemForm = model.itemForm
+                modelItemFormValidationErrors = model.itemFormValidationErrors
+
+                itemFormValidationErrors = 
+                    case fieldName of
+                        "title" ->
+                            { modelItemFormValidationErrors
+                                | title = Item.itemFormError .title itemForm.title
+                            }
+                        _ ->
+                            modelItemFormValidationErrors
+    
+
+            in
+                ( { model | itemFormValidationErrors = itemFormValidationErrors }, Cmd.none )
 
 
 addPendingCommandToModel : Model -> Command -> PendingCommand
@@ -783,7 +813,7 @@ pageCategories model =
                     p [] [ text "Loading..." ]
     in
     
-    div[ class "flex flex-col gap-4" ]
+    div[ class "flex flex-col" ]
         [ viewHeading
         , viewNavbar model
         , viewPanel ""
@@ -823,31 +853,28 @@ pageItems model =
                         viewItemList model items
                 Nothing ->
                     p [] [ text "Loading..." ]
-        
-        titleErrors : Html Msg
         titleErrors =
-            Item.itemFormError .title model.itemForm.title
-            |> List.map (\err -> div [ class "text-sm text-warning" ] [ text err ])
-            |> Html.div []
-
-        epcErrors : Html Msg
-        epcErrors =
-            Item.itemFormError .epc model.itemForm.epc
-            |> List.map (\err -> div [ class "text-sm text-warning" ] [ text err ])
-            |> Html.div []
+            model.itemFormValidationErrors.title
+                |> List.map (\err -> div [ class "text-sm text-warning" ] [ text err ])
+                |> Html.div []
+        formErrors =
+            model.itemFormValidationErrors.formErrors
+                |> List.map (\err -> div [ class "text-sm text-error" ] [ text err ])
+                |> Html.div []
 
     in
         div[ class "flex flex-col" ]
             [ viewHeading
             , viewNavbar model
             , viewPanel "Add Item"
-                [ input [ placeholder "Enter item name..." , class "input input-bordered w-full max-w-xs", onInput (\title -> AddItemForm (ItemFormTitle title)) ] []
+                [ input [ placeholder "Enter item name..." , class "input input-bordered w-full max-w-xs", onInput (\title -> AddItemForm (ItemFormTitle title)), onBlur (AddItemFormOnBlur "title") ] []
                 , titleErrors
 
                 , label [ for "scanned-epc" ] [ text "Scanned EPC: "]
                 , input [ id "scanned-epc", class "input", disabled True, value model.itemForm.epc ] []
-                , epcErrors -- shouldn't be any errors here since it's read-only
+                -- , epcErrors -- shouldn't be any errors here since it's read-only
 
+                , formErrors
                 , button [ class "btn btn-secondary", onClick AddItemFormSubmit ] [ text "Add Item" ]
                 ]
             , panelItems
@@ -947,6 +974,7 @@ viewDebugCmd model =
         , button [ class "btn", onClick (ReceiveData [0xf4, 0x03, 0x04, 0x11, 0xf4] ) ] [text "Receive error cmd 0x4"]
         , button [ class "btn", onClick (SendCommand VH88.startListingTags) ] [text "Debug start listing tags"]
         , button [ class "btn", onClick (ReceiveResponse (VH88.Command.CommandWithArgs (VH88.Command.HostComputerCardReading, [0xe2, 0x0, 0x47, 0x18, 0xb8, 0x30, 0x64, 0x26, 0x7b, 0xc2, 0x1, 0xc])))] [ text "Pretend scan EPC"]
+        , button [ class "btn btn-error", onClick (IndexedDBCommand IndexedDB.deleteDB) ] [ text "Delete database"]
         ]
     , viewPanel "Debug Info"
         [ viewPendingCommands model

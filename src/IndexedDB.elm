@@ -32,6 +32,7 @@ commandStringDict =
         , ("listItems", ListItems)
         , ("open", Open)
         , ("addItem", AddItem)
+        , ("deleteDB", DeleteDB)
         ]
 
 type Command = FindItem
@@ -39,6 +40,7 @@ type Command = FindItem
              | ListItems
              | Open
              | AddItem
+             | DeleteDB
              | Unknown
             
 commandFromString : String -> Command
@@ -135,6 +137,10 @@ addItem item =
 open : IndexedDbCmdArg
 open =
     ( "open", Json.Encode.null )
+
+deleteDB : IndexedDbCmdArg
+deleteDB =
+    ( "deleteDB", Json.Encode.null )
 
 message : msg -> Cmd msg
 message =

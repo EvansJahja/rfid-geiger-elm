@@ -31,6 +31,18 @@ type alias Form =
     , epc : String
     }
 
+type alias ValidationErrors =
+    { title : List String
+    , epc : List String
+    , formErrors : List String
+    }
+emptyValidationErrors : ValidationErrors
+emptyValidationErrors =
+    { title = []
+    , epc = []
+    , formErrors = []
+    }
+
 defaultForm  : Form
 defaultForm  =
     { title = ""

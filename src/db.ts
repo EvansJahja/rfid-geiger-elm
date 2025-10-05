@@ -88,6 +88,13 @@ class DB {
         return await this.db.add('item', item);
     }
 
+    async deleteDB() {
+        console.log("Deleting IndexedDB database...");
+        await this.db.close();
+        await deleteDB('MyDatabase');
+        console.log("IndexedDB database deleted.");
+    }
+
     // async deleteItem(id) {
     //     const db = await this.dbPromise;
     //     return db.delete('item', id);
