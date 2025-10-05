@@ -38,6 +38,7 @@
     "copy-webpack-plugin": "^13.0.1",
     "daisyui": "^5.1.26",
     "elm-reloader": "^1.1.2",
+    "elm-review": "^2.13.4",
     "elm-test": "^0.19.1-revision16",
     "ts-loader": "^9.5.4",
     "ts-patch": "^3.3.0",
