@@ -425,7 +425,7 @@ update msg (Model model) =
                                 modelItemForm = model.itemForm
                             in
                                 if
-                                    model.page == PageItems || model.showDebug
+                                    model.page == PageAddItems || model.showDebug
                                 then
                                     { modelItemForm | epc = ( EPC.epcStringPrism.reverseGet epc)}
                                 else
