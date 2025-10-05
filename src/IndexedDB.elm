@@ -4,6 +4,7 @@ import Json.Encode
 import Task
 import Dict exposing (Dict)
 import Item exposing (Item)
+import EPC exposing (EPC)
 
 type DBStatus = StatusNone | StatusOpened
 
@@ -32,6 +33,8 @@ commandStringDict =
         , ("listItems", ListItems)
         , ("open", Open)
         , ("addItem", AddItem)
+        , ("putItem", PutItem)
+        , ("deleteItem", DeleteItem)
         , ("deleteDB", DeleteDB)
         ]
 
@@ -40,6 +43,8 @@ type Command = FindItem
              | ListItems
              | Open
              | AddItem
+             | PutItem
+             | DeleteItem
              | DeleteDB
              | Unknown
             
@@ -58,6 +63,8 @@ type IndexedDBResult = FindItemResult (Maybe Item)
                      | ListItemsResult (List Item)
                      | OpenResult DBStatus
                      | AddItemResult
+                     | PutItemResult
+                     | DeleteItemResult
                      | UnknownResult
 type IndexedDBError = UnknownError
                     | StatusError String
@@ -104,6 +111,10 @@ receive (cmd, value) =
                                 ListItemsResult []
                     "addItem" ->
                         AddItemResult
+                    "putItem" ->
+                        PutItemResult
+                    "deleteItem" ->
+                        DeleteItemResult
                     _ ->
                         UnknownResult
             _ ->
@@ -122,6 +133,10 @@ findItem : String -> IndexedDbCmdArg
 findItem name =
     ( "findItem", Json.Encode.string name )
 
+deleteItem : EPC -> IndexedDbCmdArg
+deleteItem epc =
+    ( "deleteItem", Json.Encode.string (EPC.epcStringPrism.reverseGet epc) )
+
 listItemKeywords : IndexedDbCmdArg
 listItemKeywords =
     ( "listItemKeywords", Json.Encode.null )
@@ -133,6 +148,10 @@ listItems =
 addItem : Item -> IndexedDbCmdArg
 addItem item =
     ( "addItem", Item.encoder item )
+
+putItem : Item -> IndexedDbCmdArg
+putItem item =
+    ( "putItem", Item.encoder item )
 
 open : IndexedDbCmdArg
 open =

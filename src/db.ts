@@ -93,6 +93,15 @@ class DB {
         return await this.db.add('item', item);
     }
 
+    async putItem(item: ItemValue) {
+        typia.assert<ItemValue>(item);
+        return await this.db.put('item', item);
+    }
+
+    async deleteItem(epc: string) {
+        return await this.db.delete('item', epc);
+    }
+
     async deleteDB() {
         console.log("Deleting IndexedDB database...");
         await this.db.close();

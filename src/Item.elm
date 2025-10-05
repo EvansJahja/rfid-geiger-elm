@@ -4,10 +4,11 @@ import Html exposing (Html, div, p, text)
 import Html.Attributes exposing (class)
 import Json.Encode
 import Json.Decode
+import EPC exposing (EPC)
 
 type alias Item =
     { title: String
-    , epc: String
+    , epc: EPC
     , keywords: List String
     , imageDataUrl : Maybe String
     }
@@ -17,7 +18,7 @@ encoder : Item -> Json.Encode.Value
 encoder item =
     Json.Encode.object 
         [ ("title", Json.Encode.string item.title)
-        , ("epc", Json.Encode.string item.epc)
+        , ("epc", Json.Encode.string (EPC.epcStringPrism.reverseGet item.epc))
         , ("keywords", Json.Encode.list Json.Encode.string item.keywords)
         , ("imageDataUrl", 
             case item.imageDataUrl of
@@ -28,11 +29,22 @@ encoder item =
 
 decoder : Json.Decode.Decoder Item
 decoder =
-    Json.Decode.map4 Item
-        (Json.Decode.field "title" Json.Decode.string)
-        (Json.Decode.field "epc" Json.Decode.string)
-        (Json.Decode.field "keywords" (Json.Decode.list Json.Decode.string))
-        (Json.Decode.field "imageDataUrl" (Json.Decode.nullable Json.Decode.string))
+    let
+        epcDecoder : Json.Decode.Decoder EPC
+        epcDecoder = Json.Decode.string
+            |> Json.Decode.andThen
+                (\s ->
+                    case (EPC.epcStringPrism.getOption s) of
+                        Just e -> Json.Decode.succeed e
+                        Nothing -> Json.Decode.fail ("Invalid EPC: " ++ s)
+                )
+    in
+    
+        Json.Decode.map4 Item
+            (Json.Decode.field "title" Json.Decode.string)
+            (Json.Decode.field "epc" epcDecoder)
+            (Json.Decode.field "keywords" (Json.Decode.list Json.Decode.string))
+            (Json.Decode.field "imageDataUrl" (Json.Decode.nullable Json.Decode.string))
 
 
 
@@ -77,14 +89,21 @@ title_ : Decoder Form Error String
 title_ =
     Decoder.lift .title title
 
-epc : Decoder String Error String
+epc : Decoder String Error EPC
 epc =
     Decoder.identity
         |> Decoder.assert (Decoder.minLength EPCRequired 1)
         |> Decoder.assert (Decoder.minLength EPCLengthInvalid 24)
         |> Decoder.assert (Decoder.maxLength EPCLengthInvalid 24)
+        |> Decoder.andThen
+            (\s ->
+                -- Decoder.always (EPC.EPC [])
+                case (EPC.epcStringPrism.getOption s) of
+                    Just e -> Decoder.always e
+                    Nothing -> Decoder.fail EPCLengthInvalid
+            )
 
-epc_ : Decoder Form Error String
+epc_ : Decoder Form Error EPC
 epc_ =
     Decoder.lift .epc epc
 

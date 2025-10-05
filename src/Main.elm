@@ -40,7 +40,10 @@ import IndexedDB exposing (IndexedDBError)
 import Monocle.Lens exposing (Lens)
 import Monocle.Compose
 import Monocle.Iso exposing (Iso)
+import Monocle.Prism exposing (Prism)
+import Result.Extra as Result
 import Html exposing (a)
+import EPC exposing (EPC)
 
 -- STATE MANAGEMENT TYPES 
 
@@ -91,12 +94,6 @@ removeErrorCommand dict cmd =
     in
     Dict.remove key dict
 
-type alias EPC = (List Int)
-epcToString : EPC -> String
-epcToString nums =
-    nums
-        |> List.map (Hex.toString >> String.pad 2 '0')
-        |> String.join ""
 
 type alias InventoryItem =
     { epc : EPC
@@ -430,7 +427,7 @@ update msg (Model model) =
                                 if
                                     model.page == PageItems || model.showDebug
                                 then
-                                    { modelItemForm | epc = epcToString epc}
+                                    { modelItemForm | epc = ( EPC.epcStringPrism.reverseGet epc)}
                                 else
                                     modelItemForm
 
@@ -570,7 +567,16 @@ update msg (Model model) =
                             ( Model { model | items = Just (Debug.log "Found items: " items) }, Cmd.none )
                         
                         IndexedDB.AddItemResult ->
+                        -- We're now clearing the item form validation errors on successful add
+                        -- This is assuming that we even care about forms, but we should decouple the add result event from the form state
+                        -- by utilizing Lens
                             ( Model { model | itemFormValidationErrors = Item.emptyValidationErrors }, indexedDbCmd IndexedDB.listItems )
+
+                        IndexedDB.PutItemResult ->
+                            ( Model { model | itemFormValidationErrors = Item.emptyValidationErrors }, indexedDbCmd IndexedDB.listItems )
+
+                        IndexedDB.DeleteItemResult ->
+                            ( Model model, indexedDbCmd IndexedDB.listItems )
 
                         IndexedDB.UnknownResult ->
                             ( Model { model | receivedData = "Received unknown IndexedDB result." }, Cmd.none )
@@ -617,7 +623,8 @@ update msg (Model model) =
                 cmdMaybeAddItem = 
                     case Item.decodeForm itemForm of
                         Ok item ->
-                            indexedDbCmd (IndexedDB.addItem item)
+                            -- TODO: We're using putItem here which will overwrite existing items with the same EPC
+                            indexedDbCmd (IndexedDB.putItem item)
                         Err _ ->
                             Cmd.none
 
@@ -690,26 +697,6 @@ subscriptions model =
 
 -- VIEW
 
-{--
-<div class="dock">
-  <button>
-    <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="currentColor" stroke-linejoin="miter" stroke-linecap="butt"><polyline points="1 11 12 2 23 11" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><path d="m5,13v7c0,1.105.895,2,2,2h10c1.105,0,2-.895,2-2v-7" fill="none" stroke="currentColor" stroke-linecap="square" stroke-miterlimit="10" stroke-width="2"></path><line x1="12" y1="22" x2="12" y2="18" fill="none" stroke="currentColor" stroke-linecap="square" stroke-miterlimit="10" stroke-width="2"></line></g></svg>
-    <span class="dock-label">Home</span>
-  </button>
-  
-  <button class="dock-active">
-    <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="currentColor" stroke-linejoin="miter" stroke-linecap="butt"><polyline points="3 14 9 14 9 17 15 17 15 14 21 14" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><rect x="3" y="3" width="18" height="18" rx="2" ry="2" fill="none" stroke="currentColor" stroke-linecap="square" stroke-miterlimit="10" stroke-width="2"></rect></g></svg>
-    <span class="dock-label">Inbox</span>
-  </button>
-  
-  <button>
-    <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="currentColor" stroke-linejoin="miter" stroke-linecap="butt"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-linecap="square" stroke-miterlimit="10" stroke-width="2"></circle><path d="m22,13.25v-2.5l-2.318-.966c-.167-.581-.395-1.135-.682-1.654l.954-2.318-1.768-1.768-2.318.954c-.518-.287-1.073-.515-1.654-.682l-.966-2.318h-2.5l-.966,2.318c-.581.167-1.135.395-1.654.682l-2.318-.954-1.768,1.768.954,2.318c-.287.518-.515,1.073-.682,1.654l-2.318.966v2.5l2.318.966c.167.581.395,1.135.682,1.654l-.954,2.318,1.768,1.768,2.318-.954c.518.287,1.073.515,1.654.682l.966,2.318h2.5l.966-2.318c.581-.167,1.135-.395,1.654-.682l2.318.954,1.768-1.768-.954-2.318c.287-.518.515-1.073.682-1.654l2.318-.966Z" fill="none" stroke="currentColor" stroke-linecap="square" stroke-miterlimit="10" stroke-width="2"></path></g></svg>
-    <span class="dock-label">Settings</span>
-  </button>
-</div>
-
---}
-
 viewDock : Model -> Html Msg
 viewDock model = 
     div [ class "dock " ]
@@ -750,7 +737,6 @@ viewNavbar (Model model) =
 
         link : String -> Page -> String -> List (Cmd Msg) -> Html Msg
         link href page label cmds =
-            -- Html.a [ Attrs.attribute "role" "tab", Attrs.href label , class (isActive page ++ "text-xs tab "), onClick (PageChange page cmds) ] [ text label ]
             Html.a [ Attrs.attribute "role" "tab", Attrs.href href , class (isActive page ++ "text-xs tab ")] [ text label ]
     in
     
@@ -765,24 +751,32 @@ viewNavbar (Model model) =
         ]
 
 
-listItem : String -> String -> DataUrl ->  Html Msg
-listItem name subtitle imageDataUrl =
-    li [ class "list-row" ]
-        [ div [] [ Html.img [ class "size-10 rounded-box", src imageDataUrl ] [] ]
-        , div [ class "flex justify-between"]
-            [ div [] [ text name ]
-            , div [ class "text-xs uppercase font-semibold opacity-60" ] [ text subtitle ]
-            ]
-        ]
-
 viewItemList : Model -> List Item.Item -> Html Msg
 viewItemList model items = 
     let
-        itemImage item = item.imageDataUrl |> Maybe.withDefault "https://img.daisyui.com/images/profile/demo/1@94.webp"
+        listItem : Item.Item -> Html Msg
+        listItem { epc, title, keywords, imageDataUrl } =
+            let
+                itemImage = imageDataUrl |> Maybe.withDefault "https://img.daisyui.com/images/profile/demo/1@94.webp"
+
+            in
+                li [ class "list-row" ]
+                    [ div [] [ Html.img [ class "size-10 rounded-box", src itemImage ] [] ]
+                    , div [ class "flex flex-col"]
+                        [ div [ class "flex justify-between"]
+                            [ div [] [ text title ]
+                            , div [ class "text-xs uppercase font-semibold opacity-60" ] [ text (String.join ", " keywords) ]
+                            ]
+                        , div [ class "flex self-end gap-4"]
+                            [ button [class "btn btn-sm btn-ghost text-error max-w-xs", onClick (IndexedDBCommand (IndexedDB.deleteItem epc))]  [ text "Delete item" ]
+                            , button [class "btn btn-sm max-w-xs",  onClick (EPCFilter (Add epc))]  [ text "Add to filter" ]
+                            ]
+                        ]
+                    ]
 
         listItems =
             items
-                |> List.map (\item -> listItem item.title "blah" (itemImage item))
+                |> List.map listItem
     in
         ul [ class "list bg-base-100 rounded-box shadow-md" ]
             listItems
@@ -790,10 +784,21 @@ viewItemList model items =
 viewKeywordCountList : Model -> KeywordCount -> Html Msg
 viewKeywordCountList model keywordCounts = 
     let
+        listItem : String -> String -> Html Msg
+        listItem keyword count =
+            li [ class "list-row" ]
+                [ div [] [ Html.img [ class "size-10 rounded-box", src "https://img.daisyui.com/images/profile/demo/1@94.webp" ] [] ]
+                , div [ class "flex justify-between"]
+                    [ div [] [ text keyword ]
+                    , div [ class "text-xs uppercase font-semibold opacity-60" ] [ text count ]
+                    ]
+                ]
+
+
         listItems =
             keywordCounts
                 |> Dict.toList
-                |> List.map (\(keyword, count) -> listItem keyword (String.fromInt count) "https://img.daisyui.com/images/profile/demo/1@94.webp")
+                |> List.map (\(keyword, count) -> listItem keyword (String.fromInt count))
     in
         ul [ class "list bg-base-100 rounded-box shadow-md" ]
             listItems
@@ -941,7 +946,7 @@ pageAddItems (Model model) =
                 , button [ class "btn btn-secondary", onClick (TakePicture modelImageDataUrlLens) ] [ text "Take picture" ]
 
                 , formErrors
-                , button [ class "btn btn-secondary", onClick AddItemFormSubmit ] [ text "Add Item" ]
+                , button [ class "btn btn-secondary", onClick AddItemFormSubmit ] [ text "Put Item" ]
                 ]
             ]
 
@@ -1112,7 +1117,7 @@ viewPanelFilter (Model model) =
        epcToLi epc =
             Html.li []
                 [ span [] 
-                    [ text ("EPC: " ++ (epcToString epc) )
+                    [ text ("EPC: " ++ (EPC.epcStringPrism.reverseGet epc) )
                     , button [class "btn", onClick (EPCFilter (Remove epc)) ] [ text "Remove From Filter" ]
                     ]
                 ]     
@@ -1131,7 +1136,7 @@ viewPanelInventory (Model model) =
        itemToLi item =
             Html.li []
                 [ span [] 
-                    [ text ("EPC: " ++ (epcToString item.epc) ++ ", Last Seen: " ++ humanTimeDifference item.lastSeen model.time ++ " ago")
+                    [ text ("EPC: " ++ (EPC.epcStringPrism.reverseGet item.epc) ++ ", Last Seen: " ++ humanTimeDifference item.lastSeen model.time ++ " ago")
                     , button  [class "btn", onClick (EPCFilter (Add item.epc))] [ text "Add to Filter" ]
                     ]
                 ]     
