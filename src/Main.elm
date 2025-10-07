@@ -12,7 +12,7 @@ import Html exposing (Html, a, button, div, h1, img, input, label, li, option, p
 import Html.Attributes as Attrs exposing (..)
 import Html.Events exposing (on, onBlur, onCheck, onClick, onInput)
 import IndexedDB exposing (IndexedDB, IndexedDBError, KeywordCount)
-import Item
+import Item exposing (Item)
 import Json.Decode as Decode exposing (index)
 import Json.Encode as Encode
 import Monocle.Compose
@@ -34,6 +34,7 @@ import VH88.Command as Command
 import VH88.Error exposing (Error(..), ErrorCode(..), errorCodeFromInt, errorCodeToString)
 import VH88.Packet as Packet exposing (Packet(..))
 import VH88.WorkingParameters as WorkingParameters exposing (WorkingParameters)
+import Form
 
 
 
@@ -181,8 +182,7 @@ type Model
         , latestEPC : Maybe EPC
         , indexedDBStatus : IndexedDB.DBStatus
         , itemKeywordCounts : Maybe KeywordCount
-        , itemForm : Item.Form
-        , itemFormValidationErrors : Item.ValidationErrors
+        , formModel : Form.Model
         , items : Maybe (List Item.Item)
         , takePictureLens : Maybe (Lens Model (Maybe DataUrl))
         , page : Page
@@ -246,8 +246,7 @@ init flags url key =
         , latestEPC = Nothing
         , indexedDBStatus = IndexedDB.StatusNone
         , itemKeywordCounts = Nothing
-        , itemForm = Item.defaultForm
-        , itemFormValidationErrors = Item.emptyValidationErrors
+        , formModel = Form.init
         , items = Nothing
         , takePictureLens = Nothing
         , page = page
@@ -286,11 +285,10 @@ type Msg
     | IndexedDBResult (Result IndexedDB.IndexedDBError IndexedDB.IndexedDBResult)
     | IndexedDBCommand IndexedDB.IndexedDbCmdArg
     | PageChange Page (List (Cmd Msg))
-    | AddItemForm ItemFormField
-    | AddItemFormSubmit
-    | AddItemFormOnBlur String
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
+    | FormMsg (Form.Msg Msg)
+    | OnItemFormSubmit (Form.Validated String Item)
 
 
 type ItemFormField
@@ -497,16 +495,16 @@ update msg (Model model) =
                         epc =
                             args
 
-                        itemForm =
-                            let
-                                modelItemForm =
-                                    model.itemForm
-                            in
-                            if model.page == PageAddItems || model.showDebug then
-                                { modelItemForm | epc = EPC.epcStringPrism.reverseGet epc }
+                        -- itemForm =
+                        --     let
+                        --         modelItemForm =
+                        --             model.itemForm
+                        --     in
+                        --     if model.page == PageAddItems || model.showDebug then
+                        --         { modelItemForm | epc = EPC.epcStringPrism.reverseGet epc }
 
-                            else
-                                modelItemForm
+                        --     else
+                        --         modelItemForm
 
                         -- we may be filtering this epc
                         filteredEpc =
@@ -522,7 +520,7 @@ update msg (Model model) =
                             else
                                 model.inventory
                     in
-                    ( Model { model | inventory = newInventory, latestEPC = Just epc, itemForm = itemForm }, Cmd.none )
+                    ( Model { model | inventory = newInventory, latestEPC = Just epc }, Cmd.none )
 
                 Command.CommandWithArgs ( unk, args ) ->
                     ( Model { model | receivedData = "Received unknown response: " }, Cmd.none )
@@ -648,14 +646,7 @@ update msg (Model model) =
                     ( Model { model | receivedData = "IndexedDB error: " ++ err }, Cmd.none )
 
                 Err (IndexedDB.CommandError IndexedDB.AddItem err) ->
-                    let
-                        modelItemFormValidationErrors =
-                            model.itemFormValidationErrors
-
-                        itemFormValidationErrors =
-                            { modelItemFormValidationErrors | formErrors = [ "IndexedDB error: " ++ err ] }
-                    in
-                    ( Model { model | itemFormValidationErrors = itemFormValidationErrors }, Cmd.none )
+                    ( Model model, Cmd.none )
 
                 Err (IndexedDB.CommandError cmd err) ->
                     ( Model { model | receivedData = "IndexedDB command " ++ IndexedDB.commandToString cmd ++ " error: " ++ err }, Cmd.none )
@@ -690,13 +681,10 @@ update msg (Model model) =
                             ( Model { model | items = Just items }, Cmd.none )
 
                         IndexedDB.AddItemResult ->
-                            -- We're now clearing the item form validation errors on successful add
-                            -- This is assuming that we even care about forms, but we should decouple the add result event from the form state
-                            -- by utilizing Lens
-                            ( Model { model | itemFormValidationErrors = Item.emptyValidationErrors }, indexedDbCmd IndexedDB.listItems )
+                            ( Model model, indexedDbCmd IndexedDB.listItems )
 
                         IndexedDB.PutItemResult ->
-                            ( Model { model | itemFormValidationErrors = Item.emptyValidationErrors }, indexedDbCmd IndexedDB.listItems )
+                            ( Model model, indexedDbCmd IndexedDB.listItems )
 
                         IndexedDB.DeleteItemResult ->
                             ( Model model, indexedDbCmd IndexedDB.listItems )
@@ -721,57 +709,17 @@ update msg (Model model) =
             , message (PageChange newPage (pageSpecificCmds newPage))
             )
 
-        AddItemForm (ItemFormTitle title) ->
+        FormMsg formMsg ->
             let
-                itemForm =
-                    model.itemForm
+                ( updatedFormModel, cmd ) =
+                    Form.update formMsg model.formModel
             in
-            ( Model { model | itemForm = { itemForm | title = title } }, Cmd.none )
+            ( Model { model | formModel = updatedFormModel }, cmd )
 
-        AddItemFormSubmit ->
-            let
-                itemForm =
-                    model.itemForm
+        OnItemFormSubmit parsed ->
+            -- Debug.todo "branch 'OnItemFormSubmit _' not implemented"
+            ( Model model, Cmd.none)
 
-                ( newModel, cmdMaybeAddItem ) =
-                    case Item.decodeForm itemForm of
-                        Ok item ->
-                            ( { model | itemForm = Item.defaultForm }, indexedDbCmd (IndexedDB.putItem item) )
-
-                        Err validationErrors ->
-                            let
-                                modelItemFormValidationErrors =
-                                    model.itemFormValidationErrors
-
-                                validationErrorString =
-                                    validationErrors |> List.map Item.errorToString
-
-                                itemFormValidationErrors =
-                                    { modelItemFormValidationErrors | formErrors = validationErrorString }
-                            in
-                            ( { model | itemFormValidationErrors = itemFormValidationErrors }, Cmd.none )
-            in
-            ( Model newModel, cmdMaybeAddItem )
-
-        AddItemFormOnBlur fieldName ->
-            let
-                itemForm =
-                    model.itemForm
-
-                modelItemFormValidationErrors =
-                    model.itemFormValidationErrors
-
-                itemFormValidationErrors =
-                    case fieldName of
-                        "title" ->
-                            { modelItemFormValidationErrors
-                                | title = Item.itemFormError .title itemForm.title
-                            }
-
-                        _ ->
-                            modelItemFormValidationErrors
-            in
-            ( Model { model | itemFormValidationErrors = itemFormValidationErrors }, Cmd.none )
 
 
 addPendingCommandToModel : Model -> Command.Command -> PendingCommand
@@ -808,8 +756,8 @@ delay sleepMs msg =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        [ Time.every 500 Tick
-        , serialData ReceiveData
+        [ serialData ReceiveData
+        -- , Time.every 500 Tick
         , serialStatus
             (\rawList ->
                 ReceiveSerialStatus (decodeSerialStatus rawList)
@@ -1053,51 +1001,63 @@ pageItems (Model model) =
 pageAddItems : Model -> Html Msg
 pageAddItems (Model model) =
     let
-        titleErrors =
-            model.itemFormValidationErrors.title
-                |> List.map (\err -> div [ class "text-sm text-warning" ] [ text err ])
-                |> Html.div []
-
-        formErrors =
-            model.itemFormValidationErrors.formErrors
-                |> List.map (\err -> div [ class "text-sm text-error" ] [ text err ])
-                |> Html.div []
-
-        formImageDataUrlLens : Lens Item.Form (Maybe DataUrl)
-        formImageDataUrlLens =
-            Lens .imageDataUrl (\b a -> { a | imageDataUrl = b })
-
-        modelFormLens : Lens Model Item.Form
-        modelFormLens =
-            Lens (\(Model m) -> m.itemForm) (\b (Model a) -> Model { a | itemForm = b })
-
-        modelImageDataUrlLens : Lens Model (Maybe DataUrl)
-        modelImageDataUrlLens =
-            modelFormLens |> Monocle.Compose.lensWithLens formImageDataUrlLens
+        hiddenFields : Item.FormHiddenFields
+        hiddenFields =
+            { 
+                -- epc = model.latestEPC |> Maybe.map EPC.epcStringPrism.reverseGet |> Maybe.withDefault ""
+            epc = "123"
+            , keywords =""
+            }
     in
-    div [ class "flex flex-col" ]
-        [ viewHeading
-        , viewNavbar (Model model)
-        , viewPanel "Add Item"
-            [ input [ placeholder "Enter item name...", class "input input-bordered w-full max-w-xs", onInput (\title -> AddItemForm (ItemFormTitle title)), onBlur (AddItemFormOnBlur "title"), value model.itemForm.title ] []
-            , titleErrors
-            , label [ for "scanned-epc" ] [ text "Scanned EPC: " ]
-            , input [ id "scanned-epc", class "input", disabled True, value model.itemForm.epc ] []
+        Item.myRenderedForm FormMsg OnItemFormSubmit hiddenFields model.formModel
+    -- Html.div []
+    -- [ text "Add Items page content goes here."]
+    -- let
+    --     titleErrors =
+    --         model.itemFormValidationErrors.title
+    --             |> List.map (\err -> div [ class "text-sm text-warning" ] [ text err ])
+    --             |> Html.div []
 
-            -- , epcErrors -- shouldn't be any errors here since it's read-only
-            -- take picture
-            , label [ for "item-picture" ] [ text "Item Picture:" ]
-            , case model.itemForm.imageDataUrl of
-                Just dataUrl ->
-                    img [ id "item-picture", class "rounded-xl max-w-xs self-center", src dataUrl ] []
+    --     formErrors =
+    --         model.itemFormValidationErrors.formErrors
+    --             |> List.map (\err -> div [ class "text-sm text-error" ] [ text err ])
+    --             |> Html.div []
 
-                Nothing ->
-                    p [] [ text "No picture taken." ]
-            , button [ class "btn btn-secondary", onClick (TakePicture modelImageDataUrlLens) ] [ text "Take picture" ]
-            , formErrors
-            , button [ class "btn btn-secondary", onClick AddItemFormSubmit ] [ text "Put Item" ]
-            ]
-        ]
+    --     formImageDataUrlLens : Lens Item.Form (Maybe DataUrl)
+    --     formImageDataUrlLens =
+    --         Lens .imageDataUrl (\b a -> { a | imageDataUrl = b })
+
+    --     modelFormLens : Lens Model Item.Form
+    --     modelFormLens =
+    --         Lens (\(Model m) -> m.itemForm) (\b (Model a) -> Model { a | itemForm = b })
+
+    --     modelImageDataUrlLens : Lens Model (Maybe DataUrl)
+    --     modelImageDataUrlLens =
+    --         modelFormLens |> Monocle.Compose.lensWithLens formImageDataUrlLens
+    -- in
+    -- div [ class "flex flex-col" ]
+    --     [ viewHeading
+    --     , viewNavbar (Model model)
+    --     -- , viewPanel "Add Item"
+    --     --     [ input [ placeholder "Enter item name...", class "input input-bordered w-full max-w-xs", onInput (\title -> AddItemForm (ItemFormTitle title)), onBlur (AddItemFormOnBlur "title"), value model.itemForm.title ] []
+    --     --     , titleErrors
+    --     --     , label [ for "scanned-epc" ] [ text "Scanned EPC: " ]
+    --     --     , input [ id "scanned-epc", class "input", disabled True, value model.itemForm.epc ] []
+
+    --     --     -- , epcErrors -- shouldn't be any errors here since it's read-only
+    --     --     -- take picture
+    --     --     , label [ for "item-picture" ] [ text "Item Picture:" ]
+    --     --     , case model.itemForm.imageDataUrl of
+    --     --         Just dataUrl ->
+    --     --             img [ id "item-picture", class "rounded-xl max-w-xs self-center", src dataUrl ] []
+
+    --     --         Nothing ->
+    --     --             p [] [ text "No picture taken." ]
+    --     --     , button [ class "btn btn-secondary", onClick (TakePicture modelImageDataUrlLens) ] [ text "Take picture" ]
+    --     --     , formErrors
+    --     --     , button [ class "btn btn-secondary", onClick AddItemFormSubmit ] [ text "Put Item" ]
+    --     --     ]
+    --     ]
 
 
 view2 model =
