@@ -158,8 +158,7 @@ pageSpecificCmds page =
 -- MODEL
 
 
-type Model
-    = Model
+type alias Model = 
         { key : Nav.Key
         , url : Url.Url
         , time : Time.Posix
@@ -184,7 +183,7 @@ type Model
         , itemKeywordCounts : Maybe KeywordCount
         , formModel : Form.Model
         , items : Maybe (List Item.Item)
-        , takePictureLens : Maybe (Lens Model (Maybe DataUrl))
+        -- , takePictureLens : Maybe (Lens Model (Maybe DataUrl))
         , page : Page
         }
 
@@ -223,7 +222,7 @@ init flags url key =
                         , indexedDbCmd IndexedDB.open
                         ]
     in
-    ( Model
+    ( 
         { key = key
         , url = url
         , time = Time.millisToPosix 0
@@ -248,7 +247,7 @@ init flags url key =
         , itemKeywordCounts = Nothing
         , formModel = Form.init
         , items = Nothing
-        , takePictureLens = Nothing
+        -- , takePictureLens = Nothing
         , page = page
         }
     , initCmd
@@ -349,17 +348,17 @@ parseAllPackets buffer accumulator =
 {-| Process all packets by calling update with ReceivePacket for each one
 -}
 processAllPackets : List Packet -> Model -> ( Model, Cmd Msg )
-processAllPackets packets (Model model) =
+processAllPackets packets ( model) =
     case packets of
         [] ->
-            ( Model model, Cmd.none )
+            (  model, Cmd.none )
 
         bunchOfPackets ->
             let
                 batchProcessPackets =
                     bunchOfPackets |> List.map (\packet -> message (ReceivePacket packet))
             in
-            ( Model model, Cmd.batch batchProcessPackets )
+            (  model, Cmd.batch batchProcessPackets )
 
 
 decodeSerialStatus : List String -> Maybe SerialStatus
@@ -426,7 +425,7 @@ port indexedDbSub : (( String, Decode.Value ) -> msg) -> Sub msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg (Model model) =
+update msg ( model) =
     case msg of
         ReceiveData byteList ->
             let
@@ -439,14 +438,14 @@ update msg (Model model) =
                 recvPacketCmds =
                     packets |> List.map (\packet -> message (ReceivePacket packet))
             in
-            ( Model { model | recvBuffer = finalBuffer }, Cmd.batch recvPacketCmds )
+            ( { model | recvBuffer = finalBuffer }, Cmd.batch recvPacketCmds )
 
         ReceivePacket packet ->
             let
                 ( updatedModel, newCmd ) =
                     case packet of
                         Response (Command.CommandWithArgs ( cmd, args )) ->
-                            ( Model
+                            ( 
                                 { model
                                     | pendingCommand = removePendingCommand model.pendingCommand cmd
                                     , errorCommand = removeErrorCommand model.errorCommand cmd -- remove from error as well
@@ -459,7 +458,7 @@ update msg (Model model) =
                                 errorCode =
                                     List.head params |> Maybe.withDefault 0x20 |> errorCodeFromInt
                             in
-                            ( Model
+                            ( 
                                 { model
                                     | pendingCommand = removePendingCommand model.pendingCommand cmd
                                     , errorCommand = addErrorCommand model.errorCommand model.time cmd errorCode
@@ -468,12 +467,12 @@ update msg (Model model) =
                             )
 
                         Status _ ->
-                            ( Model model, Cmd.none )
+                            (  model, Cmd.none )
 
                         -- Don't remove pending commands for status packets
                         Request _ ->
                             -- Requests are outgoing, we shouldn't receive them
-                            ( Model model, Cmd.none )
+                            (  model, Cmd.none )
             in
             ( updatedModel, newCmd )
 
@@ -487,7 +486,7 @@ update msg (Model model) =
                         maybeWorkingParams =
                             BytesHelper.decodeListInt decoder args
                     in
-                    ( Model { model | workingParameters = maybeWorkingParams, receivedData = "Working parameters updated." }, Cmd.none )
+                    (  { model | workingParameters = maybeWorkingParams, receivedData = "Working parameters updated." }, Cmd.none )
 
                 Command.CommandWithArgs ( Command.HostComputerCardReading, args ) ->
                     let
@@ -520,13 +519,13 @@ update msg (Model model) =
                             else
                                 model.inventory
                     in
-                    ( Model { model | inventory = newInventory, latestEPC = Just epc }, Cmd.none )
+                    (  { model | inventory = newInventory, latestEPC = Just epc }, Cmd.none )
 
                 Command.CommandWithArgs ( unk, args ) ->
-                    ( Model { model | receivedData = "Received unknown response: " }, Cmd.none )
+                    (  { model | receivedData = "Received unknown response: " }, Cmd.none )
 
         RequestDeviceList ->
-            ( Model model, requestDeviceList () )
+            (  model, requestDeviceList () )
 
         ReceiveDeviceList devices ->
             let
@@ -538,20 +537,20 @@ update msg (Model model) =
                         [] ->
                             Nothing
             in
-            ( Model { model | deviceList = devices, selectedDevice = firstDeviceCmd }, Cmd.none )
+            ( { model | deviceList = devices, selectedDevice = firstDeviceCmd }, Cmd.none )
 
         SetEditWorkingParameters maybeParams ->
-            ( Model { model | editWorkingParameters = maybeParams }, Cmd.none )
+            (  { model | editWorkingParameters = maybeParams }, Cmd.none )
 
         UpdateWorkingParameters params ->
-            ( Model { model | workingParameters = Just params, editWorkingParameters = Nothing }, sendPacket (VH88.setWorkingParameters params) )
+            (  { model | workingParameters = Just params, editWorkingParameters = Nothing }, sendPacket (VH88.setWorkingParameters params) )
 
         ReceiveSerialStatus maybeStatus ->
             case maybeStatus of
                 Just status ->
                     let
                         newModel =
-                            Model { model | serialStatus = status }
+                             { model | serialStatus = status }
 
                         cmd =
                             if status == SerialConnected then
@@ -563,25 +562,25 @@ update msg (Model model) =
                     ( newModel, cmd )
 
                 Nothing ->
-                    ( Model { model | receivedData = "Status: Unknown status received." }, Cmd.none )
+                    (  { model | receivedData = "Status: Unknown status received." }, Cmd.none )
 
         IncrementCounter ->
-            ( Model { model | counter = model.counter + 1 }, Cmd.none )
+            (  { model | counter = model.counter + 1 }, Cmd.none )
 
         DeviceSelected device ->
-            ( Model { model | selectedDevice = device }, Cmd.none )
+            (  { model | selectedDevice = device }, Cmd.none )
 
         Connect device ->
-            ( Model model, Cmd.batch [ deviceConnect (encodeDevice device), registerListener () ] )
+            (  model, Cmd.batch [ deviceConnect (encodeDevice device), registerListener () ] )
 
         DebugCmd debugMsg ->
-            ( Model model, debugPort debugMsg )
+            (  model, debugPort debugMsg )
 
         DebugToggle isChecked ->
-            ( Model { model | showDebug = isChecked }, Cmd.none )
+            (  { model | showDebug = isChecked }, Cmd.none )
 
         Tick newTime ->
-            ( Model { model | time = newTime }, Cmd.none )
+            (  { model | time = newTime }, Cmd.none )
 
         SendCommand packet ->
             let
@@ -592,80 +591,83 @@ update msg (Model model) =
                     Packet.packetContents packet
 
                 pendingCommand =
-                    addPendingCommandToModel (Model model) cmd
+                    addPendingCommandToModel ( model) cmd
             in
-            ( Model { model | pendingCommand = pendingCommand }, serialSendCmd )
+            (  { model | pendingCommand = pendingCommand }, serialSendCmd )
 
         SetPowerLevel powerLevel ->
-            ( Model { model | powerLevel = powerLevel }, Cmd.none )
+            (  { model | powerLevel = powerLevel }, Cmd.none )
 
         ClearInventory ->
-            ( Model { model | inventory = Dict.empty }, Cmd.none )
+            (  { model | inventory = Dict.empty }, Cmd.none )
 
         EPCFilter operation ->
             case operation of
                 Add epc ->
-                    ( Model { model | epcFilter = Set.insert epc model.epcFilter }, Cmd.none )
+                    (  { model | epcFilter = Set.insert epc model.epcFilter }, Cmd.none )
 
                 Remove epc ->
-                    ( Model { model | epcFilter = Set.remove epc model.epcFilter }, Cmd.none )
+                    (  { model | epcFilter = Set.remove epc model.epcFilter }, Cmd.none )
 
         TakePicture lens ->
-            ( Model { model | takePictureLens = Just lens }, takePicture () )
+            Debug.todo "branch 'TakePicture _' not implemented"
+            -- (  { model | takePictureLens = Just lens }, takePicture () )
 
         TakePictureResult dataUrl ->
-            case model.takePictureLens of
-                Just lens ->
-                    let
-                        updatedModel =
-                            lens.set (Just dataUrl) (Model model)
+            Debug.todo "branch 'TakePictureResult _' not implemented"
 
-                        (Model newModel) =
-                            updatedModel
-                    in
-                    ( Model { newModel | takePictureLens = Nothing }, Cmd.none )
+            -- case Nothing of
+            --     Just lens ->
+            --         let
+            --             updatedModel =
+            --                 lens.set (Just dataUrl) ( model)
 
-                Nothing ->
-                    ( Model model, Cmd.none )
+            --             ( newModel) =
+            --                 updatedModel
+            --         in
+            --         (   newModel  , Cmd.none )
+
+            --     Nothing ->
+            --         (  model, Cmd.none )
 
         PageChange newPage cmds ->
-            ( Model { model | page = newPage }, Cmd.batch cmds )
+            ( { model | page = newPage }, Cmd.batch cmds )
 
         FindItem name ->
-            ( Model model, indexedDbCmd (IndexedDB.findItem name) )
+            ( model, indexedDbCmd (IndexedDB.findItem name) )
 
         ListItemKeywords ->
-            ( Model model, indexedDbCmd IndexedDB.listItemKeywords )
+            ( model, indexedDbCmd IndexedDB.listItemKeywords )
 
         IndexedDBCommand cmdArg ->
-            ( Model model, indexedDbCmd cmdArg )
+            ( model, indexedDbCmd cmdArg )
 
         IndexedDBResult result ->
             case result of
                 Err (IndexedDB.StatusError err) ->
-                    ( Model { model | receivedData = "IndexedDB error: " ++ err }, Cmd.none )
+                    (  { model | receivedData = "IndexedDB error: " ++ err }, Cmd.none )
 
                 Err (IndexedDB.CommandError IndexedDB.AddItem err) ->
-                    ( Model model, Cmd.none )
+                    (  model, Cmd.none )
 
                 Err (IndexedDB.CommandError cmd err) ->
-                    ( Model { model | receivedData = "IndexedDB command " ++ IndexedDB.commandToString cmd ++ " error: " ++ err }, Cmd.none )
+                    (  { model | receivedData = "IndexedDB command " ++ IndexedDB.commandToString cmd ++ " error: " ++ err }, Cmd.none )
 
                 Err _ ->
-                    ( Model { model | receivedData = "Unhandled IndexedDB error." }, Cmd.none )
+                    (  { model | receivedData = "Unhandled IndexedDB error." }, Cmd.none )
 
                 Ok res ->
                     case res of
                         IndexedDB.OpenResult status ->
-                            ( Model { model | indexedDBStatus = status }, Cmd.none )
+                            (  { model | indexedDBStatus = status }, Cmd.none )
 
                         IndexedDB.FindItemResult maybeItem ->
                             case maybeItem of
                                 Just item ->
-                                    ( Model { model | receivedData = "Found item: " ++ item.title }, Cmd.none )
+                                    (  { model | receivedData = "Found item: " ++ item.title }, Cmd.none )
 
                                 Nothing ->
-                                    ( Model { model | receivedData = "Item not found." }, Cmd.none )
+                                    (  { model | receivedData = "Item not found." }, Cmd.none )
 
                         IndexedDB.ListItemKeywordsResult keywordCounts ->
                             let
@@ -675,37 +677,37 @@ update msg (Model model) =
                                         |> List.map (\( keyword, count ) -> keyword ++ " (" ++ String.fromInt count ++ ")")
                                         |> String.join ", "
                             in
-                            ( Model { model | itemKeywordCounts = Just keywordCounts, receivedData = "Keywords: " ++ keywordsString }, Cmd.none )
+                            (  { model | itemKeywordCounts = Just keywordCounts, receivedData = "Keywords: " ++ keywordsString }, Cmd.none )
 
                         IndexedDB.ListItemsResult items ->
-                            ( Model { model | items = Just items }, Cmd.none )
+                            (  { model | items = Just items }, Cmd.none )
 
                         IndexedDB.AddItemResult ->
-                            ( Model model, indexedDbCmd IndexedDB.listItems )
+                            (  model, indexedDbCmd IndexedDB.listItems )
 
                         IndexedDB.PutItemResult ->
-                            ( Model model, indexedDbCmd IndexedDB.listItems )
+                            (  model, indexedDbCmd IndexedDB.listItems )
 
                         IndexedDB.DeleteItemResult ->
-                            ( Model model, indexedDbCmd IndexedDB.listItems )
+                            (  model, indexedDbCmd IndexedDB.listItems )
 
                         IndexedDB.UnknownResult ->
-                            ( Model { model | receivedData = "Received unknown IndexedDB result." }, Cmd.none )
+                            (  { model | receivedData = "Received unknown IndexedDB result." }, Cmd.none )
 
         LinkClicked urlRequest ->
             case urlRequest of
                 Browser.Internal url ->
-                    ( Model model, Nav.pushUrl model.key (Url.toString url) )
+                    (  model, Nav.pushUrl model.key (Url.toString url) )
 
                 Browser.External href ->
-                    ( Model model, Nav.load href )
+                    (  model, Nav.load href )
 
         UrlChanged url ->
             let
                 newPage =
                     UrlParser.parse routeParser url |> Maybe.withDefault PageSettings
             in
-            ( Model { model | url = url, page = newPage }
+            (  { model | url = url, page = newPage }
             , message (PageChange newPage (pageSpecificCmds newPage))
             )
 
@@ -714,16 +716,16 @@ update msg (Model model) =
                 ( updatedFormModel, cmd ) =
                     Form.update formMsg model.formModel
             in
-            ( Model { model | formModel = updatedFormModel }, cmd )
+            (  { model | formModel = updatedFormModel }, cmd )
 
         OnItemFormSubmit parsed ->
             -- Debug.todo "branch 'OnItemFormSubmit _' not implemented"
-            ( Model model, Cmd.none)
+            (  model, Cmd.none)
 
 
 
 addPendingCommandToModel : Model -> Command.Command -> PendingCommand
-addPendingCommandToModel (Model model) cmd =
+addPendingCommandToModel ( model) cmd =
     addPendingCommand model.pendingCommand model.time cmd
 
 
@@ -809,7 +811,7 @@ viewDock model =
 
 
 viewNavbar : Model -> Html Msg
-viewNavbar (Model model) =
+viewNavbar ( model) =
     let
         isActive page =
             if model.page == page then
@@ -906,28 +908,28 @@ viewDoc model =
 
 
 view : Model -> Html Msg
-view (Model model) =
+view ( model) =
     div [ class "min-h-screen bg-base-200 text-base-content" ]
         [ case model.page of
             PageCategories ->
-                pageCategories (Model model)
+                pageCategories ( model)
 
             PageLocation ->
-                pageLocation (Model model)
+                pageLocation ( model)
 
             PageSettings ->
-                pageSettings (Model model)
+                pageSettings ( model)
 
             PageItems ->
-                pageItems (Model model)
+                pageItems ( model)
 
             PageAddItems ->
-                pageAddItems (Model model)
+                pageAddItems ( model)
         ]
 
 
 pageCategories : Model -> Html Msg
-pageCategories (Model model) =
+pageCategories ( model) =
     let
         maybeKeywordCounts =
             model.itemKeywordCounts
@@ -939,14 +941,14 @@ pageCategories (Model model) =
                         p [] [ text "No keywords found." ]
 
                     else
-                        viewKeywordCountList (Model model) keywordCounts
+                        viewKeywordCountList ( model) keywordCounts
 
                 Nothing ->
                     p [] [ text "Loading..." ]
     in
     div [ class "flex flex-col" ]
         [ viewHeading
-        , viewNavbar (Model model)
+        , viewNavbar ( model)
         , viewPanel ""
             [ button [ class "btn", onClick (FindItem "Yarn") ] [ text "Search" ]
             , button [ class "btn", onClick ListItemKeywords ] [ text "Get keywords" ]
@@ -956,25 +958,25 @@ pageCategories (Model model) =
 
 
 pageLocation : Model -> Html Msg
-pageLocation (Model model) =
+pageLocation ( model) =
     div [ class "flex flex-col" ]
         [ viewHeading
-        , viewNavbar (Model model)
+        , viewNavbar ( model)
         , p [] [ text "Location page content goes here." ]
         ]
 
 
 pageSettings : Model -> Html Msg
-pageSettings (Model model) =
+pageSettings ( model) =
     div [ class "flex flex-col" ]
         [ viewHeading
-        , viewNavbar (Model model)
+        , viewNavbar ( model)
         , view2 model
         ]
 
 
 pageItems : Model -> Html Msg
-pageItems (Model model) =
+pageItems ( model) =
     let
         maybeItems =
             model.items
@@ -986,20 +988,20 @@ pageItems (Model model) =
                         p [] [ text "No items found." ]
 
                     else
-                        viewItemList (Model model) items
+                        viewItemList ( model) items
 
                 Nothing ->
                     p [] [ text "Loading..." ]
     in
     div [ class "flex flex-col" ]
         [ viewHeading
-        , viewNavbar (Model model)
+        , viewNavbar ( model)
         , panelItems
         ]
 
 
 pageAddItems : Model -> Html Msg
-pageAddItems (Model model) =
+pageAddItems ( model) =
     let
         hiddenFields : Item.FormHiddenFields
         hiddenFields =
@@ -1077,17 +1079,17 @@ view2 model =
                 , label [ for "debug-checkbox", class "ms-2 text-sm font-medium text-gray-900 dark:text-gray-300" ] [ text "Enable Debugging" ]
                 ]
             ]
-        , htmlIf model.showDebug (viewDebugCmd (Model model)) (div [] [])
-        , viewPanelConnection (Model model)
-        , viewPanelRfidPower (Model model)
+        , htmlIf model.showDebug (viewDebugCmd ( model)) (div [] [])
+        , viewPanelConnection ( model)
+        , viewPanelRfidPower ( model)
         , case model.editWorkingParameters of
             Just ewp ->
                 viewPanelWorkingParameter ewp
 
             Nothing ->
                 button [ onClick (SetEditWorkingParameters model.workingParameters), class "btn btn-secondary" ] [ text "Edit Working Parameters" ]
-        , viewPanelFilter (Model model)
-        , viewPanelInventory (Model model)
+        , viewPanelFilter ( model)
+        , viewPanelInventory ( model)
         ]
 
 
@@ -1100,7 +1102,7 @@ viewPanel title contents =
 
 
 viewPanelConnection : Model -> Html Msg
-viewPanelConnection (Model model) =
+viewPanelConnection ( model) =
     let
         attr =
             disabled (model.selectedDevice == Nothing)
@@ -1127,7 +1129,7 @@ viewPanelConnection (Model model) =
 
 
 viewPanelRfidPower : Model -> Html Msg
-viewPanelRfidPower (Model model) =
+viewPanelRfidPower ( model) =
     let
         powerLevelCommand =
             VH88.setRFIDPower model.powerLevel
@@ -1157,7 +1159,7 @@ htmlIf condition htmlTrue htmlFalse =
 
 
 viewDebugCmd : Model -> Html Msg
-viewDebugCmd (Model model) =
+viewDebugCmd ( model) =
     div []
         [ viewPanel "Debug Commands"
             [ button [ class "btn", onClick (ReceiveDeviceList [ Device "Device A" "00:00:00:00:00:01", Device "Device B" "00:00:00:00:00:02" ]) ] [ text "Debug get device list" ]
@@ -1247,7 +1249,7 @@ viewPanelWorkingParameter wp =
 
 
 viewPanelFilter : Model -> Html Msg
-viewPanelFilter (Model model) =
+viewPanelFilter ( model) =
     let
         epcToLi epc =
             Html.li []
@@ -1268,7 +1270,7 @@ viewPanelFilter (Model model) =
 
 
 viewPanelInventory : Model -> Html Msg
-viewPanelInventory (Model model) =
+viewPanelInventory ( model) =
     let
         itemToLi item =
             Html.li []
