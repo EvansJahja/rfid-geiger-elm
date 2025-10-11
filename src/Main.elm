@@ -35,6 +35,7 @@ import VH88.Error exposing (Error(..), ErrorCode(..), errorCodeFromInt, errorCod
 import VH88.Packet as Packet exposing (Packet(..))
 import VH88.WorkingParameters as WorkingParameters exposing (WorkingParameters)
 import Form
+import VH88.WorkingParameters exposing (DataOutputMode(..))
 
 
 
@@ -183,7 +184,10 @@ type alias Model =
         , itemKeywordCounts : Maybe KeywordCount
         , formModel : Form.Model
         , items : Maybe (List Item.Item)
-        -- , takePictureLens : Maybe (Lens Model (Maybe DataUrl))
+        , takePictureMsg : Maybe (DataUrl -> Msg)
+        , imageDataUrl : Maybe DataUrl
+        , addItemsSubmitErrors : List String
+        , addItemsFormSubmitting : Bool
         , page : Page
         }
 
@@ -247,7 +251,10 @@ init flags url key =
         , itemKeywordCounts = Nothing
         , formModel = Form.init
         , items = Nothing
-        -- , takePictureLens = Nothing
+        , takePictureMsg = Nothing
+        , imageDataUrl = Nothing
+        , addItemsSubmitErrors = []
+        , addItemsFormSubmitting = False
         , page = page
         }
     , initCmd
@@ -271,13 +278,14 @@ type Msg
     | IncrementCounter
     | DebugCmd String
     | DebugToggle Bool
+    | CreateMockData
     | DeviceSelected (Maybe Device)
     | Connect Device
     | Tick Time.Posix
     | SetPowerLevel Int
     | ClearInventory
     | EPCFilter EPCFilterOperation
-    | TakePicture (Lens Model (Maybe DataUrl))
+    | TakePicture (DataUrl -> Msg)
     | TakePictureResult DataUrl
     | FindItem String
     | ListItemKeywords
@@ -288,6 +296,7 @@ type Msg
     | UrlChanged Url.Url
     | FormMsg (Form.Msg Msg)
     | OnItemFormSubmit (Form.Validated String Item)
+    | AddItemImage DataUrl
 
 
 type ItemFormField
@@ -609,26 +618,16 @@ update msg ( model) =
                 Remove epc ->
                     (  { model | epcFilter = Set.remove epc model.epcFilter }, Cmd.none )
 
-        TakePicture lens ->
-            Debug.todo "branch 'TakePicture _' not implemented"
-            -- (  { model | takePictureLens = Just lens }, takePicture () )
+        TakePicture dataUrlMsg ->
+            (  { model | takePictureMsg = Just dataUrlMsg } , takePicture () )
 
         TakePictureResult dataUrl ->
-            Debug.todo "branch 'TakePictureResult _' not implemented"
+            case model.takePictureMsg of
+                Just takePictureMsg ->
+                    (   { model | takePictureMsg = Nothing } , message (takePictureMsg dataUrl ) )
 
-            -- case Nothing of
-            --     Just lens ->
-            --         let
-            --             updatedModel =
-            --                 lens.set (Just dataUrl) ( model)
-
-            --             ( newModel) =
-            --                 updatedModel
-            --         in
-            --         (   newModel  , Cmd.none )
-
-            --     Nothing ->
-            --         (  model, Cmd.none )
+                Nothing ->
+                    (  model, Cmd.none )
 
         PageChange newPage cmds ->
             ( { model | page = newPage }, Cmd.batch cmds )
@@ -686,7 +685,7 @@ update msg ( model) =
                             (  model, indexedDbCmd IndexedDB.listItems )
 
                         IndexedDB.PutItemResult ->
-                            (  model, indexedDbCmd IndexedDB.listItems )
+                            (  { model | addItemsFormSubmitting = False }, indexedDbCmd IndexedDB.listItems )
 
                         IndexedDB.DeleteItemResult ->
                             (  model, indexedDbCmd IndexedDB.listItems )
@@ -719,9 +718,86 @@ update msg ( model) =
             (  { model | formModel = updatedFormModel }, cmd )
 
         OnItemFormSubmit parsed ->
-            -- Debug.todo "branch 'OnItemFormSubmit _' not implemented"
-            (  model, Cmd.none)
+            case parsed of
+                Form.Valid item ->
+                    (  { model | addItemsFormSubmitting = True }, indexedDbCmd (IndexedDB.putItem item) )
+                Form.Invalid someParsed errors ->
+                    (  { model | addItemsFormSubmitting = False }, Cmd.none )
+        AddItemImage dataUrl ->
+            ( { model | imageDataUrl = Just dataUrl, takePictureMsg = Nothing }, Cmd.none )
+        CreateMockData ->
+            let
+                mockItems : List Item.Item
+                mockItems =
+                    [ Item.Item "Sewing Needle Set" (EPC.debugMustEPC "e2004718b83064267bc20551") ["sewing", "needle", "craft"] (Just "https://placeholders.io/200/200/needle%2520and%2520thread")
+                    , Item.Item "Detail Paintbrush" (EPC.debugMustEPC "e2004718b83064267bc20662") ["faceup", "art", "brush", "craft"] (Just "https://placeholders.io/200/200/fine%2520tip%2520paintbrush")
+                    , Item.Item "BJD Glass Eye" (EPC.debugMustEPC "e2004718b83064267bc20773") ["bjd", "doll", "glass", "craft"] (Just "https://placeholders.io/200/200/miniature%2520glass%2520doll%2520eye")
+                    , Item.Item "Wig Hair Tinsel Fiber" (EPC.debugMustEPC "e2004718b83064267bc20884") ["wig", "hair", "craft"] (Just "https://placeholders.io/200/200/synthetic%2520hair%2520fiber")
+                    , Item.Item "Miniature Bead Jar" (EPC.debugMustEPC "e2004718b83064267bc20995") ["beads", "art", "craft"] (Just "https://placeholders.io/200/200/small%2520bead%2520storage%2520box")
+                    , Item.Item "Assorted Resistors" (EPC.debugMustEPC "e2004718b83064267bc2100A") ["resistor", "electronics", "arduino"] (Just "https://placeholders.io/200/200/tiny%2520electronic%2520resistor")
+                    , Item.Item "Jumper Wires (Set)" (EPC.debugMustEPC "e2004718b83064267bc2111B") ["jumper", "wire", "arduino", "electronics"] (Just "https://placeholders.io/200/200/colorful%2520jumper%2520wires")
+                    , Item.Item "Micro USB Connector" (EPC.debugMustEPC "e2004718b83064267bc2122C") ["usb", "cable", "connector", "electronics"] (Just "https://placeholders.io/200/200/micro%2520usb%2520connector")
+                    , Item.Item "LED Diode (5mm)" (EPC.debugMustEPC "e2004718b83064267bc2133D") ["led", "diode", "electronics", "arduino"] (Just "https://placeholders.io/200/200/small%2520red%2520led%2520diode")
+                    , Item.Item "Mini Solder Spool" (EPC.debugMustEPC "e2004718b83064267bc2144E") ["solder", "electronics", "tool"] (Just "https://placeholders.io/200/200/mini%2520solder%2520spool")
+                    , Item.Item "Sewing Pins (Box)" (EPC.debugMustEPC "e2004718b83064267bc2155F") ["sewing", "pins", "craft", "storage"] (Just "https://placeholders.io/200/200/box%2520of%2520sewing%2520pins")
+                    , Item.Item "Thimble" (EPC.debugMustEPC "e2004718b83064267bc2166A") ["sewing", "tool", "finger%2520guard"] (Just "https://placeholders.io/200/200/metal%2520sewing%2520thimble")
+                    , Item.Item "Fabric Chalk Pen" (EPC.debugMustEPC "e2004718b83064267bc2177B") ["sewing", "marking", "tool"] (Just "https://placeholders.io/200/200/fabric%2520chalk%2520marker")
+                    , Item.Item "Micro Seam Ripper" (EPC.debugMustEPC "e2004718b83064267bc2188C") ["sewing", "tool", "unpick"] (Just "https://placeholders.io/200/200/tiny%2520seam%2520ripper")
+                    , Item.Item "BJD Wig Cap (Small)" (EPC.debugMustEPC "e2004718b83064267bc2199D") ["bjd", "wig", "cap", "doll"] (Just "https://placeholders.io/200/200/small%2520doll%2520wig%2520cap")
+                    , Item.Item "Wig Styling Clips" (EPC.debugMustEPC "e2004718b83064267bc2200E") ["wig", "styling", "clips", "tool"] (Just "https://placeholders.io/200/200/mini%2520hair%2520styling%2520clips")
+                    , Item.Item "Acrylic Paint Set (Mini)" (EPC.debugMustEPC "e2004718b83064267bc2211F") ["faceup", "art", "paint", "acrylic"] (Just "https://placeholders.io/200/200/mini%2520acrylic%2520paint%2520tubes")
+                    , Item.Item "Matte Varnish Spray" (EPC.debugMustEPC "e2004718b83064267bc2222A") ["faceup", "varnish", "spray", "sealant"] (Just "https://placeholders.io/200/200/small%2520matte%2520sealer%2520can")
+                    , Item.Item "Pastel Powder Pigments" (EPC.debugMustEPC "e2004718b83064267bc2233B") ["faceup", "pastel", "pigment", "art"] (Just "https://placeholders.io/200/200/box%2520of%2520soft%2520pastel%2520chalks")
+                    , Item.Item "Micron Pen (005)" (EPC.debugMustEPC "e2004718b83064267bc2244C") ["art", "sketch", "pen", "detail"] (Just "https://placeholders.io/200/200/ultra%2520fine%2520micron%2520pen")
+                    , Item.Item "Precision Tweezers" (EPC.debugMustEPC "e2004718b83064267bc2255D") ["tool", "craft", "assembly"] (Just "https://placeholders.io/200/200/bent%2520tip%2520precision%2520tweezers")
+                    , Item.Item "Jewelry Pliers (Nose)" (EPC.debugMustEPC "e2004718b83064267bc2266E") ["craft", "tool", "jewelry"] (Just "https://placeholders.io/200/200/small%2520round%2520nose%2520pliers")
+                    , Item.Item "Wire Cutter (Mini)" (EPC.debugMustEPC "e2004718b83064267bc2277F") ["tool", "craft", "electronics", "cutter"] (Just "https://placeholders.io/200/200/mini%2520diagonal%2520wire%2520cutter")
+                    , Item.Item "Small Hot Glue Sticks" (EPC.debugMustEPC "e2004718b83064267bc2288A") ["glue", "craft", "supply"] (Just "https://placeholders.io/200/200/mini%2520hot%2520glue%2520sticks")
+                    , Item.Item "Plastic Safety Eyes" (EPC.debugMustEPC "e2004718b83064267bc2299B") ["doll", "sewing", "craft", "eyes"] (Just "https://placeholders.io/200/200/black%2520plastic%2520safety%2520eyes")
+                    , Item.Item "Ceramic Capacitors (Assorted)" (EPC.debugMustEPC "e2004718b83064267bc2300C") ["capacitor", "electronics", "component"] (Just "https://placeholders.io/200/200/tiny%2520ceramic%2520capacitors")
+                    , Item.Item "DIP Switch (8-pin)" (EPC.debugMustEPC "e2004718b83064267bc2311D") ["switch", "electronics", "arduino"] (Just "https://placeholders.io/200/200/8%2520pin%2520dip%2520switch")
+                    , Item.Item "Tactile Push Button" (EPC.debugMustEPC "e2004718b83064267bc2322E") ["button", "switch", "electronics"] (Just "https://placeholders.io/200/200/small%2520tactile%2520push%2520button")
+                    , Item.Item "Potentiometer (10k Ohm)" (EPC.debugMustEPC "e2004718b83064267bc2333F") ["potentiometer", "electronics", "control"] (Just "https://placeholders.io/200/200/10k%2520ohm%2520potentiometer")
+                    , Item.Item "5V Regulator (LM7805)" (EPC.debugMustEPC "e2004718b83064267bc2344A") ["regulator", "electronics", "power"] (Just "https://placeholders.io/200/200/lm7805%2520voltage%2520regulator")
+                    , Item.Item "Microcontroller (ATmega)" (EPC.debugMustEPC "e2004718b83064267bc2355B") ["microcontroller", "chip", "arduino"] (Just "https://placeholders.io/200/200/atmega328p%2520microcontroller%2520chip")
+                    , Item.Item "Header Pins (Strip)" (EPC.debugMustEPC "e2004718b83064267bc2366C") ["pins", "connector", "electronics"] (Just "https://placeholders.io/200/200/breakaway%2520header%2520pins")
+                    , Item.Item "Breadboard (Mini)" (EPC.debugMustEPC "e2004718b83064267bc2377D") ["breadboard", "prototype", "arduino"] (Just "https://placeholders.io/200/200/mini%2520white%2520breadboard")
+                    , Item.Item "Ferrite Bead" (EPC.debugMustEPC "e2004718b83064267bc2388E") ["ferrite", "noise", "electronics", "usb"] (Just "https://placeholders.io/200/200/small%2520black%2520ferrite%2520bead")
+                    , Item.Item "USB-C Shell Crimp" (EPC.debugMustEPC "e2004718b83064267bc2399F") ["usb%2520c", "crimp", "cable", "connector"] (Just "https://placeholders.io/200/200/metal%2520usb%2520c%2520connector%2520shell")
+                    , Item.Item "Heat Shrink Tubing (Small)" (EPC.debugMustEPC "e2004718b83064267bc2400A") ["heat%2520shrink", "cable", "tool"] (Just "https://placeholders.io/200/200/assorted%2520heat%2520shrink%2520tubing")
+                    , Item.Item "Cable Braiding Paracord" (EPC.debugMustEPC "e2004718b83064267bc2411B") ["cable", "braid", "paracord", "usb"] (Just "https://placeholders.io/200/200/small%2520bundle%2520of%2520paracord")
+                    , Item.Item "Wire Stripper (Pocket)" (EPC.debugMustEPC "e2004718b83064267bc2422C") ["tool", "wire", "stripper", "electronics"] (Just "https://placeholders.io/200/200/pocket%2520wire%2520stripper")
+                    , Item.Item "Small DC Motor" (EPC.debugMustEPC "e2004718b83064267bc2433D") ["motor", "electronics", "arduino", "actuator"] (Just "https://placeholders.io/200/200/tiny%2520dc%2520hobby%2520motor")
+                    , Item.Item "OLED Display (0.96 inch)" (EPC.debugMustEPC "e2004718b83064267bc2444E") ["display", "oled", "arduino", "screen"] (Just "https://placeholders.io/200/200/0.96%2520inch%2520oled%2520display")
+                    , Item.Item "CR2032 Battery (Coin)" (EPC.debugMustEPC "e2004718b83064267bc2455F") ["battery", "power", "electronics"] (Just "https://placeholders.io/200/200/cr2032%2520coin%2520cell%2520battery")
+                    , Item.Item "Photoresistor (LDR)" (EPC.debugMustEPC "e2004718b83064267bc2466A") ["sensor", "light", "arduino", "electronics"] (Just "https://placeholders.io/200/200/small%2520photoresistor%2520ldr")
+                    , Item.Item "Infrared Receiver (IR)" (EPC.debugMustEPC "e2004718b83064267bc2477B") ["sensor", "ir", "electronics", "remote"] (Just "https://placeholders.io/200/200/small%2520infrared%2520receiver%2520module")
+                    , Item.Item "Mini Speaker (8 Ohm)" (EPC.debugMustEPC "e2004718b83064267bc2488C") ["speaker", "audio", "electronics"] (Just "https://placeholders.io/200/200/tiny%25208%2520ohm%2520speaker")
+                    , Item.Item "Shift Register (74HC595)" (EPC.debugMustEPC "e2004718b83064267bc2499D") ["chip", "electronics", "logic"] (Just "https://placeholders.io/200/200/shift%2520register%2520ic%2520chip")
+                    , Item.Item "Rotary Encoder" (EPC.debugMustEPC "e2004718b83064267bc2500E") ["encoder", "input", "arduino", "control"] (Just "https://placeholders.io/200/200/rotary%2520encoder%2520with%2520button")
+                    , Item.Item "UV Resin (Small Bottle)" (EPC.debugMustEPC "e2004718b83064267bc2511F") ["resin", "bjd", "art", "craft"] (Just "https://placeholders.io/200/200/small%2520bottle%2520uv%2520resin")
+                    , Item.Item "Dotting Tools (Set)" (EPC.debugMustEPC "e2004718b83064267bc2522A") ["faceup", "art", "tools", "nail%2520art"] (Just "https://placeholders.io/200/200/set%2520of%2520dotting%2520tools")
+                    , Item.Item "Wig Weft Clip" (EPC.debugMustEPC "e2004718b83064267bc2533B") ["wig", "hair", "craft", "clip"] (Just "https://placeholders.io/200/200/mini%2520wig%2520weft%2520clip")
+                    , Item.Item "Doll Eyelash Strips" (EPC.debugMustEPC "e2004718b83064267bc2544C") ["bjd", "faceup", "eyelash", "doll"] (Just "https://placeholders.io/200/200/tiny%2520doll%2520eyelash%2520strips")
+                    , Item.Item "Tiny Snap Buttons" (EPC.debugMustEPC "e2004718b83064267bc2555D") ["sewing", "fastener", "craft", "notion"] (Just "https://placeholders.io/200/200/small%2520snap%2520buttons")
+                    , Item.Item "Glue B-7000 (Small Tube)" (EPC.debugMustEPC "e2004718b83064267bc2566E") ["glue", "craft", "bjd", "electronics"] (Just "https://placeholders.io/200/200/small%2520tube%2520b-7000%2520glue")
+                    , Item.Item "Slide Switch (Mini)" (EPC.debugMustEPC "e2004718b83064267bc2577F") ["switch", "electronics", "component"] (Just "https://placeholders.io/200/200/mini%2520slide%2520switch")
+                    , Item.Item "Dupont Connector Pins" (EPC.debugMustEPC "e2004718b83064267bc2588A") ["dupont", "connector", "wire", "electronics"] (Just "https://placeholders.io/200/200/dupont%2520connector%2520pins")
+                    , Item.Item "Servo Motor (9g)" (EPC.debugMustEPC "e2004718b83064267bc2599B") ["servo", "motor", "arduino", "actuator"] (Just "https://placeholders.io/200/200/mini%25209g%2520servo%2520motor")
+                    , Item.Item "Sewing Machine Oil" (EPC.debugMustEPC "e2004718b83064267bc2600C") ["sewing", "tool", "maintenance"] (Just "https://placeholders.io/200/200/small%2520bottle%2520sewing%2520oil")
+                    , Item.Item "UV LED Torch" (EPC.debugMustEPC "e2004718b83064267bc2611D") ["uv", "led", "resin", "tool"] (Just "https://placeholders.io/200/200/small%2520uv%2520led%2520torch")
+                    , Item.Item "Fine Sandpaper (Strips)" (EPC.debugMustEPC "e2004718b83064267bc2622E") ["sandpaper", "art", "faceup", "tool"] (Just "https://placeholders.io/200/200/fine%2520grit%2520sandpaper")
+                    , Item.Item "Fiber Optic Strands" (EPC.debugMustEPC "e2004718b83064267bc2633F") ["fiber", "optic", "electronics", "lighting"] (Just "https://placeholders.io/200/200/thin%2520fiber%2520optic%2520strands")
+                    , Item.Item "Small Toggle Switch" (EPC.debugMustEPC "e2004718b83064267bc2644A") ["switch", "electronics", "component"] (Just "https://placeholders.io/200/200/mini%2520toggle%2520switch")
+                    ]
 
+
+                
+                createItemsCmd = Cmd.batch (List.map (indexedDbCmd << IndexedDB.putItem) mockItems)
+
+                in
+                
+                (  model, createItemsCmd )
 
 
 addPendingCommandToModel : Model -> Command.Command -> PendingCommand
@@ -1005,13 +1081,22 @@ pageAddItems ( model) =
     let
         hiddenFields : Item.FormHiddenFields
         hiddenFields =
-            { 
-                -- epc = model.latestEPC |> Maybe.map EPC.epcStringPrism.reverseGet |> Maybe.withDefault ""
-            epc = "123"
-            , keywords =""
+            { epc =  model.latestEPC |> Maybe.map EPC.epcStringPrism.reverseGet |> Maybe.withDefault ""
+            , keywords = ""
+            , imageDataUrl = model.imageDataUrl |> Maybe.withDefault ""
             }
+        msg =
+            { formMsg = FormMsg
+            , onSubmit = OnItemFormSubmit
+            , takePicture = TakePicture AddItemImage
+            }
+        errors = model.addItemsSubmitErrors
     in
-        Item.myRenderedForm FormMsg OnItemFormSubmit hiddenFields model.formModel
+    div [ class "flex flex-col" ]
+        [ viewHeading
+        , viewNavbar ( model)
+        , Item.myRenderedForm msg hiddenFields errors model.addItemsFormSubmitting model.formModel
+        ]
     -- Html.div []
     -- [ text "Add Items page content goes here."]
     -- let
@@ -1168,6 +1253,7 @@ viewDebugCmd ( model) =
             , button [ class "btn", onClick (SendCommand VH88.startListingTags) ] [ text "Debug start listing tags" ]
             , button [ class "btn", onClick (ReceiveResponse (Command.CommandWithArgs ( Command.HostComputerCardReading, [ 0xE2, 0x00, 0x47, 0x18, 0xB8, 0x30, 0x64, 0x26, 0x7B, 0xC2, 0x01, 0x0C ] ))) ] [ text "Pretend scan EPC" ]
             , button [ class "btn btn-error", onClick (IndexedDBCommand IndexedDB.deleteDB) ] [ text "Delete database" ]
+            , button [ class "btn", onClick CreateMockData ] [ text "Create mock data" ]
             ]
         -- , viewPanel "Debug Info"
         --     [ viewPendingCommands (Model model)

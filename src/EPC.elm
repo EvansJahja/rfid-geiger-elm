@@ -1,8 +1,9 @@
-module EPC exposing (EPC, epcStringPrism)
+module EPC exposing (EPC, epcStringPrism, debugMustEPC)
 
 import Hex
 import Monocle.Prism exposing (Prism)
 import Result.Extra as Result
+import Form.Field exposing (No)
 
 
 type alias EPC =
@@ -43,7 +44,7 @@ stringToEpc str =
                 in
                 helper str []
     in
-    List.map Hex.fromString twoCharChunks
+    List.map (String.toLower >> Hex.fromString) twoCharChunks
         |> Result.combine
         |> Result.toMaybe
 
@@ -51,3 +52,12 @@ stringToEpc str =
 epcStringPrism : Prism String EPC
 epcStringPrism =
     Prism stringToEpc epcToString
+
+
+debugMustEPC : String -> EPC
+debugMustEPC str =
+    case stringToEpc str of
+        Just epc ->
+            epc
+        Nothing ->
+            Debug.todo ("Invalid EPC string: " ++ str)

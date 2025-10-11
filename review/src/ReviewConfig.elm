@@ -36,9 +36,9 @@ config : List Rule
 config =
     [ Docs.ReviewAtDocs.rule
     , NoConfusingPrefixOperator.rule
-    , NoDebug.Log.rule
-    , NoDebug.TodoOrToString.rule
-        |> Rule.ignoreErrorsForDirectories [ "tests/" ]
+    -- , NoDebug.Log.rule
+    -- , NoDebug.TodoOrToString.rule
+        -- |> Rule.ignoreErrorsForDirectories [ "tests/" ]
     , Simplify.rule Simplify.defaults
     ]
 

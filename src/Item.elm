@@ -2,14 +2,19 @@ module Item exposing (..)
 import Form
 import Form.Field as Field
 import Form.FieldView as FieldView
-import Html exposing (Html, div, p, text)
+import Html exposing (Html, a, button, div, h1, img, input, label, li, option, p, select, span, text, ul)
 import Html.Attributes exposing (class)
+import Html.Events exposing (onClick)
 import Json.Encode
 import Json.Decode
 import EPC exposing (EPC)
 import Form.Validation as Validation
 import Browser
 import Html.Events exposing (onSubmit)
+import Html exposing (form)
+import Html.Attributes exposing (type_)
+import Html.Attributes exposing (disabled)
+import Html exposing (sub)
 
 type alias Item =
     { title: String
@@ -24,6 +29,13 @@ type alias MySimpleType = {username : String}
 type alias FormHiddenFields =
     { epc: String
     , keywords: String
+    , imageDataUrl : String
+    }
+
+type alias Messages msg = 
+    { formMsg : Form.Msg msg -> msg
+    , onSubmit : Form.Validated String Item -> msg
+    , takePicture : msg
     }
 
 epcFromString : String -> Result String EPC
@@ -32,45 +44,82 @@ epcFromString s =
         Just e -> Ok e
         Nothing -> Err ("Invalid EPC: " ++ s)
 
-myItemForm : FormHiddenFields -> Form.HtmlForm String Item input msg
-myItemForm hidden =
-    (\title epc keywords ->
-        { combine = 
-                Validation.succeed Item
-                    |> Validation.andMap title
-                    |> Validation.andMap
-                        ( epc
-                        |> Validation.map epcFromString
-                        |> Validation.fromResult
-                        )
-                    |> Validation.andMap 
-                        ( keywords
-                        |> Validation.map (Maybe.map (String.split ",") >> Maybe.withDefault [])
-                        )
-                    |> Validation.andMap (Validation.succeed (Nothing))
-        , view =
-            \formState ->
-                let
-                    fieldView label field =
-                        Html.div []
-                            [ Html.label []
-                                [ Html.text (label ++ " ")
-                                , FieldView.input [] field
-                                , Validation.fieldStatus field |> Validation.fieldStatusToString |> Html.text
-                                , errorsView formState field
+myItemForm : Messages msg -> FormHiddenFields -> List String -> Bool -> Form.HtmlForm String Item input msg
+myItemForm messages hidden errors submitting =
+    let
+        imageView : String -> Html msg
+        imageView imageDataUrl =
+            case imageDataUrl of
+                "" -> 
+                    div [] [ text "No image" ]
+                url -> 
+                    div []
+                        [ img [ class "max-h-48", Html.Attributes.src url ] []
+                        ]
+        form = (\title epc keywords imageDataUrl ->
+            { combine = 
+                    Validation.succeed Item
+                        |> Validation.andMap title
+                        |> Validation.andMap
+                            ( epc
+                            |> Validation.map epcFromString
+                            |> Validation.fromResult
+                            )
+                        |> Validation.andMap 
+                            ( keywords
+                            |> Validation.map (Maybe.map (String.split ",") >> Maybe.withDefault [])
+                            )
+                        |> Validation.andMap
+                            ( imageDataUrl
+                            )
+                            
+            , view =
+                \formState ->
+                    let
+                        fieldView label field =
+                            Html.div []
+                                [ Html.label []
+                                    [ Html.text (label ++ " ")
+                                    , FieldView.input [class "input input-bordered w-full max-w-xs"] field
+                                    , Validation.fieldStatus field |> Validation.fieldStatusToString |> Html.text
+                                    , errorsView formState field
+                                    ]
                                 ]
-                            ]
-                in
-                [Html.div []
-                    [ FieldView.input [class "input input-bordered w-full max-w-xs"] title
-                    , Validation.fieldStatus epc |> Validation.fieldStatusToString |> Html.text
-                    , errorsView formState epc
-                    , fieldView "Keywords (comma-separated)" keywords
-                    , Html.button [] [ Html.text "Submit"]
+                        submitErrorView : (List String) -> Html msg
+                        submitErrorView listOfErrors =
+                            if List.isEmpty listOfErrors then
+                                text ""
+                            else
+                                div [ class "error" ]
+                                    (List.map (\e -> p [ class "text-error" ] [ text e ]) listOfErrors)
+                        
+
+                        submitBtnContent = 
+                            if submitting then
+                                [ span [class "loading loading-spinner"] []
+                                , text "Submitting..."
+                                ]
+                            else
+                                [ text "Submit" ]
+                    in
+                    [
+                        viewPanel "Add Item"
+                        [ fieldView "Title" title
+
+                        , errorsView formState epc
+                        , imageView hidden.imageDataUrl
+                        , errorsView formState imageDataUrl
+
+                        , button [ class "btn btn-secondary", disabled submitting, type_ "button", onClick (messages.takePicture) ] [ text "Take picture" ]
+
+                        , button [ class "btn btn-primary", disabled submitting] submitBtnContent
+                        , submitErrorView errors
+                        ]
                     ]
-                ]
-        }
-    )
+            }
+            )
+    in
+        form
         |> Form.form
         |> Form.field "username"
             (Field.text
@@ -83,6 +132,10 @@ myItemForm hidden =
             )
         |> Form.field "keywords"
             ( Field.text
+            )
+        |> Form.hiddenField "imageDataUrl"
+            ( Field.text
+                |> Field.withInitialValue (\_ ->  hidden.imageDataUrl)
             )
 
 
@@ -104,20 +157,21 @@ errorsView { submitAttempted, errors } field =
     else
         Html.ul [] []
 
--- type Msg = FormMsg (Form.Msg Msg)
-
-myRenderedForm : (Form.Msg msg -> msg) -> (Form.Validated String Item -> msg) -> FormHiddenFields -> Form.Model -> Html msg
-myRenderedForm toMsg onSubmit hiddenFields formModel = 
-    myItemForm hiddenFields |> Form.renderHtml
-                { submitting = False
-                , state = formModel
-                , toMsg = toMsg
-                }
-                (Form.options "signUp"
-                    |> Form.withOnSubmit (\ {parsed} -> onSubmit parsed)
-
-                )
-                []
+myRenderedForm : Messages msg -> FormHiddenFields -> List String -> Bool -> Form.Model -> Html msg
+myRenderedForm messages hiddenFields errors submitting formModel = 
+    let
+        toMsg = messages.formMsg
+        onSubmit = messages.onSubmit
+    in
+        myItemForm messages hiddenFields errors submitting |> Form.renderHtml
+                    { submitting = submitting
+                    , state = formModel
+                    , toMsg = toMsg
+                    }
+                    (Form.options "signUp"
+                        |> Form.withOnSubmit (\ {parsed} -> onSubmit parsed)
+                    )
+                    []
 
 
 encoder : Item -> Json.Encode.Value
@@ -311,3 +365,10 @@ type Error
 --         , update = update
 --         , subscriptions = \_ -> Sub.none
 --         }
+
+viewPanel : String -> List (Html msg) -> Html msg
+viewPanel title contents =
+    div [ class "p-4 border-base-300 rounded bg-base-100" ]
+        [ h1 [] [ text title ]
+        , div [ class "flex flex-col gap-2" ] contents
+        ]
