@@ -42,4 +42,17 @@
   --noise: 0;
 }
 
+.image-full > figure img {
+  filter: unset;
+}
 
+/* @layer application {
+
+  .image-full-dim > figure img {
+    filter: brightness(28%);
+  }
+
+  .image-full:has(:checked) > figure img {
+    filter: brightness(28%);
+  }
+} */
