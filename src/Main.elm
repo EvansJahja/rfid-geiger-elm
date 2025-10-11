@@ -130,15 +130,16 @@ routeParser =
     oneOf
         [ UrlParser.map PageCategories (s "categories")
         , UrlParser.map PageItems (s "items")
+        , UrlParser.map PageItem (s "item" </> string)
         , UrlParser.map PageLocation (s "location")
         , UrlParser.map PageSettings (s "settings")
         , UrlParser.map PageAddItems (s "add-item")
         ]
 
-
 type Page
     = PageCategories
     | PageItems
+    | PageItem String
     | PageAddItems
     | PageLocation
     | PageSettings
@@ -152,6 +153,9 @@ pageSpecificCmds page =
 
         PageItems ->
             [ indexedDbCmd IndexedDB.listItems ]
+
+        PageItem id ->
+            [ indexedDbCmd (IndexedDB.getItem id) ]
 
         _ ->
             []
@@ -186,10 +190,11 @@ type alias Model =
         , itemKeywordCounts : Maybe KeywordCount
         , formModel : Form.Model
         , items : Maybe (List Item.Item)
+        , activeItem : Maybe Item.Item
         , takePictureMsg : Maybe (DataUrl -> Msg)
         , imageDataUrl : Maybe DataUrl
         , addItemsSubmitErrors : List String
-        , addItemsFormSubmitting : Bool
+        , formSubmitting : Bool
         , page : Page
         }
 
@@ -256,7 +261,8 @@ init flags url key =
         , takePictureMsg = Nothing
         , imageDataUrl = Nothing
         , addItemsSubmitErrors = []
-        , addItemsFormSubmitting = False
+        , formSubmitting = False
+        , activeItem = Nothing
         , page = page
         }
     , initCmd
@@ -289,7 +295,6 @@ type Msg
     | EPCFilter EPCFilterOperation
     | TakePicture (DataUrl -> Msg)
     | TakePictureResult DataUrl
-    | FindItem String
     | ListItemKeywords
     | IndexedDBResult (Result IndexedDB.IndexedDBError IndexedDB.IndexedDBResult)
     | IndexedDBCommand IndexedDB.IndexedDbCmdArg
@@ -634,9 +639,6 @@ update msg ( model) =
         PageChange newPage cmds ->
             ( { model | page = newPage }, Cmd.batch cmds )
 
-        FindItem name ->
-            ( model, indexedDbCmd (IndexedDB.findItem name) )
-
         ListItemKeywords ->
             ( model, indexedDbCmd IndexedDB.listItemKeywords )
 
@@ -662,13 +664,8 @@ update msg ( model) =
                         IndexedDB.OpenResult status ->
                             (  { model | indexedDBStatus = status }, Cmd.none )
 
-                        IndexedDB.FindItemResult maybeItem ->
-                            case maybeItem of
-                                Just item ->
-                                    (  { model | receivedData = "Found item: " ++ item.title }, Cmd.none )
-
-                                Nothing ->
-                                    (  { model | receivedData = "Item not found." }, Cmd.none )
+                        IndexedDB.GetItemResult maybeItem ->
+                            ( { model | activeItem = maybeItem }, Cmd.none )
 
                         IndexedDB.ListItemKeywordsResult keywordCounts ->
                             let
@@ -687,7 +684,7 @@ update msg ( model) =
                             (  model, indexedDbCmd IndexedDB.listItems )
 
                         IndexedDB.PutItemResult ->
-                            (  { model | addItemsFormSubmitting = False }, indexedDbCmd IndexedDB.listItems )
+                            (  { model | formSubmitting = False }, indexedDbCmd IndexedDB.listItems )
 
                         IndexedDB.DeleteItemResult ->
                             (  model, indexedDbCmd IndexedDB.listItems )
@@ -722,9 +719,9 @@ update msg ( model) =
         OnItemFormSubmit parsed ->
             case parsed of
                 Form.Valid item ->
-                    (  { model | addItemsFormSubmitting = True }, indexedDbCmd (IndexedDB.putItem item) )
+                    (  { model | formSubmitting = True }, indexedDbCmd (IndexedDB.putItem item) )
                 Form.Invalid someParsed errors ->
-                    (  { model | addItemsFormSubmitting = False }, Cmd.none )
+                    (  { model | formSubmitting = False }, Cmd.none )
         AddItemImage dataUrl ->
             ( { model | imageDataUrl = Just dataUrl, takePictureMsg = Nothing }, Cmd.none )
         CreateMockData ->
@@ -1003,6 +1000,8 @@ view ( model) =
 
             PageAddItems ->
                 pageAddItems ( model)
+            PageItem id ->
+                pageItem ( model) id
         ]
 
 
@@ -1028,7 +1027,7 @@ pageCategories ( model) =
         [ viewHeading
         , viewNavbar ( model)
         , viewPanel ""
-            [ button [ class "btn", onClick (FindItem "Yarn") ] [ text "Search" ]
+            [ button [ class "btn" ] [ text "(TODO) Search" ]
             , button [ class "btn", onClick ListItemKeywords ] [ text "Get keywords" ]
             , panelContents
             ]
@@ -1086,19 +1085,18 @@ pageItems ( model) =
                     , div 
                         [ class "card-body transition-opacity duration-400 ease-in-out  opacity-0  pointer-events-none absolute inset-0 peer-checked:opacity-100 peer-checked:pointer-events-auto" ]
                         [ h2 [ class "card-title text-white" ] [ text title ]
-                        , button [ class "btn" ] [ text "View Details" ]
+                        , a [ class "btn", href ("/item/" ++ id) ] [ text "View Details" ]
                         ]
                     ]
                 ]
 
         -- View Grid function, updated to include the necessary 'id' argument
-        viewGrid : List (String, String) -> Html Msg
+        viewGrid : List (String, String, String) -> Html Msg
         viewGrid items =
             -- The main grid container. Responsive: 2 cols, 3 on sm, 4 on lg.
             div [ class "grid gap-6 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 p-4" ]
-                -- Use List.indexedMap to generate a unique index (id) for each card
-                (List.indexedMap
-                    (\index ( url, name ) -> imageCard (String.fromInt index) url name)
+                (List.map
+                    (\ ( index, url, name ) -> imageCard index url name)
                     items
                 )
 
@@ -1113,7 +1111,8 @@ pageItems ( model) =
                         viewGrid
                             (List.map
                                 (\item ->
-                                    ( item.imageDataUrl |> Maybe.withDefault "https://img.daisyui.com/images/profile/demo/1@94.webp"
+                                    ( (item.epc |> EPC.epcStringPrism.reverseGet)
+                                    , item.imageDataUrl |> Maybe.withDefault "https://img.daisyui.com/images/profile/demo/1@94.webp"
                                     , item.title
                                     )
                                 ) items
@@ -1127,6 +1126,33 @@ pageItems ( model) =
         , viewNavbar ( model)
         , panelItems
         ]
+
+pageItem : Model -> String -> Html Msg
+pageItem ( model) id =
+    let
+        hiddenFields : Item.FormHiddenFields
+        hiddenFields =
+            { epc =  model.latestEPC |> Maybe.map EPC.epcStringPrism.reverseGet |> Maybe.withDefault ""
+            , keywords = ""
+            , imageDataUrl = model.imageDataUrl |> Maybe.withDefault ""
+            }
+        msg =
+            { formMsg = FormMsg
+            , onSubmit = OnItemFormSubmit
+            , takePicture = TakePicture AddItemImage
+            }
+        errors = model.addItemsSubmitErrors
+    in
+    case model.activeItem of
+        Nothing -> 
+            p [] [ text ("Loading item with id: " ++ id) ]
+        Just item -> 
+            div [ class "flex flex-col" ]
+                [ viewHeading
+                , viewNavbar ( model)
+                , Item.viewEditItemForm msg item errors model.formSubmitting model.formModel
+                ]
+
 
 
 pageAddItems : Model -> Html Msg
@@ -1148,7 +1174,7 @@ pageAddItems ( model) =
     div [ class "flex flex-col" ]
         [ viewHeading
         , viewNavbar ( model)
-        , Item.myRenderedForm msg hiddenFields errors model.addItemsFormSubmitting model.formModel
+        , Item.viewAddItemForm msg hiddenFields errors model.formSubmitting model.formModel
         ]
     -- Html.div []
     -- [ text "Add Items page content goes here."]

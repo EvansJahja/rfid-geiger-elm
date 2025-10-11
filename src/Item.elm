@@ -15,6 +15,8 @@ import Html exposing (form)
 import Html.Attributes exposing (type_)
 import Html.Attributes exposing (disabled)
 import Html exposing (sub)
+import Svg exposing (image)
+import Form.Validation exposing (Validation)
 
 type alias Item =
     { title: String
@@ -44,8 +46,8 @@ epcFromString s =
         Just e -> Ok e
         Nothing -> Err ("Invalid EPC: " ++ s)
 
-myItemForm : Messages msg -> FormHiddenFields -> List String -> Bool -> Form.HtmlForm String Item input msg
-myItemForm messages hidden errors submitting =
+addItemForm : Messages msg -> FormHiddenFields -> List String -> Bool -> Form.HtmlForm String Item input msg
+addItemForm messages hidden errors submitting =
     let
         imageView : String -> Html msg
         imageView imageDataUrl =
@@ -121,7 +123,7 @@ myItemForm messages hidden errors submitting =
     in
         form
         |> Form.form
-        |> Form.field "username"
+        |> Form.field "title"
             (Field.text
                 |> Field.required "Required"
             )
@@ -157,19 +159,156 @@ errorsView { submitAttempted, errors } field =
     else
         Html.ul [] []
 
-myRenderedForm : Messages msg -> FormHiddenFields -> List String -> Bool -> Form.Model -> Html msg
-myRenderedForm messages hiddenFields errors submitting formModel = 
+editItemForm : Messages msg ->  List String -> Bool -> Form.HtmlForm String Item Item msg
+editItemForm messages errors submitting = 
+    let
+        imageView : String -> Html msg
+        imageView imageDataUrl =
+            case imageDataUrl of
+                "" -> 
+                    div [] [ text "No image" ]
+                url -> 
+                    div []
+                        [ img [ class "max-h-48", Html.Attributes.src url ] []
+                        ]
+        form = (\title epc keywords imageDataUrl ->
+            { combine = 
+                    Validation.succeed Item
+                        |> Validation.andMap title
+                        |> Validation.andMap
+                            ( epc
+                            |> Validation.map epcFromString
+                            |> Validation.fromResult
+                            )
+                        |> Validation.andMap 
+                            ( keywords
+                            |> Validation.map (Maybe.map (String.split ",") >> Maybe.withDefault [])
+                            )
+                        |> Validation.andMap
+                            ( imageDataUrl
+                            )
+                            
+            , view =
+                \formState ->
+                    let
+                        imageDataUrlWithDefault = 
+                            let
+                                w = Validation.value imageDataUrl
+                                r = case w of
+                                    Just s -> 
+                                        s
+                                    Nothing -> Nothing
+                            in
+                                r
+                        
+                        imageViewIfExists = 
+                            case imageDataUrlWithDefault of
+                                Just url -> 
+                                    div []
+                                        [ imageView url
+                                        ]
+                                Nothing -> 
+                                    div [] [ text "No image" ]
+
+                        fieldView label field =
+                            Html.div []
+                                [ Html.label []
+                                    [ Html.text (label ++ " ")
+                                    , FieldView.input [class "input input-bordered w-full max-w-xs"] field
+                                    , Validation.fieldStatus field |> Validation.fieldStatusToString |> Html.text
+                                    , errorsView formState field
+                                    ]
+                                ]
+                        submitErrorView : (List String) -> Html msg
+                        submitErrorView listOfErrors =
+                            if List.isEmpty listOfErrors then
+                                text ""
+                            else
+                                div [ class "error" ]
+                                    (List.map (\e -> p [ class "text-error" ] [ text e ]) listOfErrors)
+                        
+
+                        submitBtnContent = 
+                            if submitting then
+                                [ span [class "loading loading-spinner"] []
+                                , text "Submitting..."
+                                ]
+                            else
+                                [ text "Submit" ]
+                    in
+                    [
+                        viewPanel "Add Item"
+                        [ fieldView "Title" title
+
+                        , errorsView formState epc
+                        , imageViewIfExists
+                        , errorsView formState imageDataUrl
+
+                        , button [ class "btn btn-secondary", disabled submitting, type_ "button", onClick (messages.takePicture) ] [ text "Take picture" ]
+
+                        , button [ class "btn btn-primary", disabled submitting] submitBtnContent
+                        , submitErrorView errors
+                        ]
+                    ]
+            }
+            )
+    in
+        form
+        |> Form.form
+        |> Form.field "title"
+            (Field.text
+                |> Field.required "Required"
+                |> Field.withInitialValue .title
+            )
+        |> Form.hiddenField "epc"
+            ( Field.text
+                |> Field.required "EPC is required"
+                |> Field.withInitialValue (.epc >> EPC.epcStringPrism.reverseGet)
+            )
+        |> Form.field "keywords"
+            ( Field.text
+            )
+        |> Form.hiddenField "imageDataUrl"
+            ( Field.text
+                |> Field.withInitialValue (.imageDataUrl >> (Maybe.withDefault "")  )
+            )
+    
+
+viewAddItemForm : Messages msg -> FormHiddenFields ->  List String -> Bool -> Form.Model -> Html msg
+viewAddItemForm messages hiddenFields errors submitting formModel = 
     let
         toMsg = messages.formMsg
         onSubmit = messages.onSubmit
     in
-        myItemForm messages hiddenFields errors submitting |> Form.renderHtml
+        addItemForm messages hiddenFields errors submitting |> Form.renderHtml
                     { submitting = submitting
                     , state = formModel
                     , toMsg = toMsg
                     }
-                    (Form.options "signUp"
+                    (
+                    (Form.options "addItem"
                         |> Form.withOnSubmit (\ {parsed} -> onSubmit parsed)
+                    )
+                    )
+                    []
+
+viewEditItemForm : Messages msg -> Item -> List String -> Bool -> Form.Model -> Html msg
+viewEditItemForm messages item errors submitting formModel = 
+    let
+        toMsg = messages.formMsg
+        onSubmit = messages.onSubmit
+
+    in
+        editItemForm messages errors submitting |> Form.renderHtml
+                    { submitting = submitting
+                    , state = formModel
+                    , toMsg = toMsg
+                    }
+                    (
+                    (Form.options "editItem"
+                        |> Form.withOnSubmit (\ {parsed} -> onSubmit parsed)
+                        |> Form.withInput item
+                    )
                     )
                     []
 

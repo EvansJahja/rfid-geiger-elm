@@ -67,7 +67,7 @@ class DB {
     }
 
 
-    async findItem(epc: string) {
+    async getItem(epc: string) {
         return await this.db.get('item', epc);
     }
 

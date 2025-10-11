@@ -28,7 +28,7 @@ keywordCountDecoder =
 commandStringDict : Dict String Command
 commandStringDict =
     Dict.fromList
-        [ ("findItem", FindItem)
+        [ ("getItem", GetItem)
         , ("listItemKeywords", ListItemKeywords)
         , ("listItems", ListItems)
         , ("open", Open)
@@ -38,7 +38,7 @@ commandStringDict =
         , ("deleteDB", DeleteDB)
         ]
 
-type Command = FindItem
+type Command = GetItem
              | ListItemKeywords
              | ListItems
              | Open
@@ -58,7 +58,7 @@ commandToString cmd =
     Dict.foldl (\k v acc -> if v == cmd then k else acc) "unknown" commandStringDict
 
 
-type IndexedDBResult = FindItemResult (Maybe Item)
+type IndexedDBResult = GetItemResult (Maybe Item)
                      | ListItemKeywordsResult KeywordCount
                      | ListItemsResult (List Item)
                      | OpenResult DBStatus
@@ -91,12 +91,12 @@ receive (cmd, value) =
                 Ok <| case baseCmd of
                     "open" ->
                         OpenResult StatusOpened
-                    "findItem" ->
+                    "getItem" ->
                         case Json.Decode.decodeValue Item.decoder value of
                             Ok item ->
-                                FindItemResult (Just item)
+                                GetItemResult (Just item)
                             Err _ ->
-                                FindItemResult Nothing
+                                GetItemResult Nothing
                     "listItemKeywords" ->
                         case Json.Decode.decodeValue keywordCountDecoder value of
                             Ok keywords ->
@@ -129,9 +129,9 @@ send db =
 
 type alias IndexedDbCmdArg = (String, Json.Encode.Value)
 
-findItem : String -> IndexedDbCmdArg
-findItem name =
-    ( "findItem", Json.Encode.string name )
+getItem : String -> IndexedDbCmdArg
+getItem name =
+    ( "getItem", Json.Encode.string name )
 
 deleteItem : EPC -> IndexedDbCmdArg
 deleteItem epc =
