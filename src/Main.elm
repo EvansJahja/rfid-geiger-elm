@@ -38,6 +38,7 @@ import Form
 import VH88.WorkingParameters exposing (DataOutputMode(..))
 import Html exposing (figure)
 import Html exposing (h2)
+import Html exposing (datalist)
 
 
 
@@ -196,8 +197,12 @@ type alias Model =
         , addItemsSubmitErrors : List String
         , formSubmitting : Bool
         , page : Page
+        , searchQuery : String
+        , searchSuggestions : List Suggestion
         }
 
+type alias Suggestion =
+    { text : String }
 
 type alias DataUrl =
     String
@@ -264,6 +269,8 @@ init flags url key =
         , formSubmitting = False
         , activeItem = Nothing
         , page = page
+        , searchQuery = ""
+        , searchSuggestions = []
         }
     , initCmd
     )
@@ -305,6 +312,7 @@ type Msg
     | OnItemFormSubmit (Form.Validated String Item)
     | AddItemImage DataUrl
     | EditItemImage DataUrl
+    | SearchInput String
 
 
 type ItemFormField
@@ -742,6 +750,19 @@ update msg ( model) =
                     ( { model | activeItem = Just updatedItem, takePictureMsg = Nothing }, Cmd.none )
 
                 Nothing -> (model, Cmd.none)
+        SearchInput query ->
+            let 
+                suggestions =
+                    if String.length query < 3 then
+                        []
+                    else
+                        [ Suggestion "faceup"
+                        , Suggestion "fiber"
+                        , Suggestion "remote"
+                        , Suggestion "resin"
+                        ]
+            in
+                ( { model | searchQuery = query, searchSuggestions = suggestions }, Cmd.none )
 
 
 addPendingCommandToModel : Model -> Command.Command -> PendingCommand
@@ -1013,16 +1034,16 @@ pageItems ( model) =
 
                 addOrRemoveFilterButton =
                     if epcIsFiltered then
-                        button [ class "btn", type_ "button", onClick ((EPCFilter << Remove) epc) ] [ text "Remove from filter" ]
+                        button [ class "btn btn-sm", type_ "button", onClick ((EPCFilter << Remove) epc) ] [ text "Remove from filter" ]
                     else
-                        button [ class "btn btn-primary", type_ "button", onClick ((EPCFilter << Add) epc) ] [ text "Add to filter" ]
+                        button [ class "btn btn-sm btn-primary", type_ "button", onClick ((EPCFilter << Add) epc) ] [ text "Add to filter" ]
             in
                 label 
                     [ Attrs.for ("card-toggle-" ++ epcStr) 
                     , class "block h-full cursor-pointer" -- Makes the whole card clickable
                     ]
                     [ div
-                        [ class "card card-compact bg-base-100 shadow-xl image-full relative h-full duration-70" ]
+                        [ class "card card-compact bg-base-100 shadow-xl image-full relative overflow-hidden duration-70" ]
                         [ input 
                             [ type_ "radio" 
                             , name "product-selection" -- <-- ALL cards MUST share the SAME name
@@ -1036,12 +1057,15 @@ pageItems ( model) =
                                 [ src imageUrl, alt ("Image of " ++ title), class "object-cover w-full h-full pointer-events-none" 
                                 ]
                                 [] 
+                            
                             ]
                         , div 
                             [ class "card-body transition-opacity duration-400 ease-in-out  opacity-0  pointer-events-none absolute inset-0 peer-checked:opacity-100 peer-checked:pointer-events-auto" ]
                             [ h2 [ class "card-title text-white" ] [ text title ]
+                            , div [class "flex flex-col place-content-end h-full gap-4"]
+                            [ a [ class "btn btn-ghost btn-sm", href ("/item/" ++ epcStr) ] [ text "View Details" ]
                             , addOrRemoveFilterButton
-                            , a [ class "btn btn-ghost", href ("/item/" ++ epcStr) ] [ text "View Details" ]
+                            ]
                             ]
                         ]
                     ]
@@ -1076,12 +1100,22 @@ pageItems ( model) =
 
                 Nothing ->
                     p [] [ text "Loading..." ]
+        suggestions =  
+            model.searchSuggestions
+                |> List.map (.text >> (\s -> li [] [ a [ href "#" ] [ text s ] ]))
+
+        search = 
+            div [ class "dropdown dropdown-open" ]
+                [ input [ list "item-search-list", placeholder "Search items...", class "input ", onInput SearchInput, value model.searchQuery ] []
+                , ul [ class "dropdown-content menu bg-base-100"] suggestions
+                ]
     in
-    div [ class "flex flex-col" ]
-        [ viewHeading
-        , viewNavbar ( model)
-        , panelItems
-        ]
+        div [ class "flex flex-col" ]
+            [ viewHeading
+            , viewNavbar ( model)
+            , search
+            , panelItems
+            ]
 
 pageItem : Model -> String -> Html Msg
 pageItem ( model) id =

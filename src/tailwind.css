@@ -1,9 +1,7 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 @plugin "daisyui" {
-
   themes: light , dark  , retro, cupcake;
-
 }
 
 
@@ -45,14 +43,3 @@
 .image-full > figure img {
   filter: unset;
 }
-
-/* @layer application {
-
-  .image-full-dim > figure img {
-    filter: brightness(28%);
-  }
-
-  .image-full:has(:checked) > figure img {
-    filter: brightness(28%);
-  }
-} */
