@@ -1,4 +1,4 @@
-module EPC exposing (EPC, epcStringPrism, debugMustEPC)
+module EPC exposing (EPC, epcStringPrism, mustEPC)
 
 import Hex
 import Monocle.Prism exposing (Prism)
@@ -54,10 +54,11 @@ epcStringPrism =
     Prism stringToEpc epcToString
 
 
-debugMustEPC : String -> EPC
-debugMustEPC str =
+mustEPC : String -> EPC
+mustEPC str =
     case stringToEpc str of
         Just epc ->
             epc
         Nothing ->
-            Debug.todo ("Invalid EPC string: " ++ str)
+            -- This should never happen if the input strings are valid EPCs
+            mustEPC str

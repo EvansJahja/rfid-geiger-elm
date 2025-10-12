@@ -1005,43 +1005,54 @@ pageItems ( model) =
 
         -- 1. Card Component using the Radio Button Hack
         -- Added 'id' argument to link the radio button and label.
-        imageCard : String -> String -> String -> Html Msg
-        imageCard id imageUrl title =
-            label 
-                [ Attrs.for ("card-toggle-" ++ id) 
-                , class "block h-full cursor-pointer" -- Makes the whole card clickable
-                ]
-                [ div
-                    [ class "card card-compact bg-base-100 shadow-xl image-full relative h-full duration-70" ]
-                    [ input 
-                        [ type_ "radio" 
-                        , name "product-selection" -- <-- ALL cards MUST share the SAME name
-                        , Attrs.id ("card-toggle-" ++ id)
-                        , class "absolute w-0 h-0 opacity-0 peer" -- 'peer' is required for peer-checked to work
-                        ] 
-                        []
-                    , figure 
-                        [ class "aspect-square relative overflow-hidden peer-checked:brightness-28 transition brightness-100" ] 
-                        [ Html.img 
-                            [ src imageUrl, alt ("Image of " ++ title), class "object-cover w-full h-full pointer-events-none" 
+        imageCard : EPC -> String -> String -> Html Msg
+        imageCard epc imageUrl title =
+            let
+                epcStr = EPC.epcStringPrism.reverseGet epc
+                epcIsFiltered = Set.member epc model.epcFilter
+
+                addOrRemoveFilterButton =
+                    if epcIsFiltered then
+                        button [ class "btn", type_ "button", onClick ((EPCFilter << Remove) epc) ] [ text "Remove from filter" ]
+                    else
+                        button [ class "btn btn-primary", type_ "button", onClick ((EPCFilter << Add) epc) ] [ text "Add to filter" ]
+            in
+                label 
+                    [ Attrs.for ("card-toggle-" ++ epcStr) 
+                    , class "block h-full cursor-pointer" -- Makes the whole card clickable
+                    ]
+                    [ div
+                        [ class "card card-compact bg-base-100 shadow-xl image-full relative h-full duration-70" ]
+                        [ input 
+                            [ type_ "radio" 
+                            , name "product-selection" -- <-- ALL cards MUST share the SAME name
+                            , Attrs.id ("card-toggle-" ++ epcStr)
+                            , class "absolute w-0 h-0 opacity-0 peer" -- 'peer' is required for peer-checked to work
+                            ] 
+                            []
+                        , figure 
+                            [ class "aspect-square relative overflow-hidden peer-checked:brightness-28 transition brightness-100" ] 
+                            [ Html.img 
+                                [ src imageUrl, alt ("Image of " ++ title), class "object-cover w-full h-full pointer-events-none" 
+                                ]
+                                [] 
                             ]
-                            [] 
-                        ]
-                    , div 
-                        [ class "card-body transition-opacity duration-400 ease-in-out  opacity-0  pointer-events-none absolute inset-0 peer-checked:opacity-100 peer-checked:pointer-events-auto" ]
-                        [ h2 [ class "card-title text-white" ] [ text title ]
-                        , a [ class "btn", href ("/item/" ++ id) ] [ text "View Details" ]
+                        , div 
+                            [ class "card-body transition-opacity duration-400 ease-in-out  opacity-0  pointer-events-none absolute inset-0 peer-checked:opacity-100 peer-checked:pointer-events-auto" ]
+                            [ h2 [ class "card-title text-white" ] [ text title ]
+                            , addOrRemoveFilterButton
+                            , a [ class "btn btn-ghost", href ("/item/" ++ epcStr) ] [ text "View Details" ]
+                            ]
                         ]
                     ]
-                ]
 
         -- View Grid function, updated to include the necessary 'id' argument
-        viewGrid : List (String, String, String) -> Html Msg
+        viewGrid : List (EPC, String, String) -> Html Msg
         viewGrid items =
             -- The main grid container. Responsive: 2 cols, 3 on sm, 4 on lg.
             div [ class "grid gap-6 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 p-4" ]
                 (List.map
-                    (\ ( index, url, name ) -> imageCard index url name)
+                    (\ ( epc, url, name ) -> imageCard epc url name)
                     items
                 )
 
@@ -1056,7 +1067,7 @@ pageItems ( model) =
                         viewGrid
                             (List.map
                                 (\item ->
-                                    ( (item.epc |> EPC.epcStringPrism.reverseGet)
+                                    ( item.epc 
                                     , item.imageDataUrl |> Maybe.withDefault "https://img.daisyui.com/images/profile/demo/1@94.webp"
                                     , item.title
                                     )
