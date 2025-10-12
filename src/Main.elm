@@ -39,6 +39,7 @@ import VH88.WorkingParameters exposing (DataOutputMode(..))
 import Html exposing (figure)
 import Html exposing (h2)
 import Html exposing (datalist)
+import Tuple exposing (first)
 
 
 
@@ -759,20 +760,35 @@ update msg ( model) =
             ( { model | searchSelection = (start, end) }, Cmd.none )
         SearchInput query ->
             let
-                queryIsEnough = String.length query >= 1
+
+                nearestKeyword : String
+                nearestKeyword =
+                    let
+                        start = first model.searchSelection + 1
+                        lastSpaceIndex =
+                            String.slice 0 start query
+                                |> String.reverse
+                                |> String.indexes " "
+                                |> List.head
+                                |> Maybe.map (\i -> String.length (String.slice 0 start query) - i - 1 )
+                                |> Maybe.withDefault (-1)
+                    in
+                        String.slice (lastSpaceIndex + 1) start query
+
+                nearestKeywordIsEnough = String.length nearestKeyword >= 2
 
                 searchCmdOrNone =
-                    if queryIsEnough then
-                        indexedDbCmd (IndexedDB.getPartialKeywords query)
+                    if nearestKeywordIsEnough then
+                        indexedDbCmd (IndexedDB.getPartialKeywords nearestKeyword)
                     else
                         Cmd.none
-                suggestionOrCleared =
-                    if queryIsEnough then
+                nearestKeywordSuggestions =
+                    if nearestKeywordIsEnough then
                         model.searchSuggestions
                     else
                         Dict.empty
             in
-            ( { model | searchQuery = query, searchSuggestions = suggestionOrCleared }, searchCmdOrNone )
+            ( { model | searchQuery = query, searchSuggestions = nearestKeywordSuggestions }, searchCmdOrNone )
 
 
 addPendingCommandToModel : Model -> Command.Command -> PendingCommand
