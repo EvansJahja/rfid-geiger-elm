@@ -1110,10 +1110,19 @@ pageItems ( model) =
 
                 Nothing ->
                     p [] [ text "Loading..." ]
+        
+
+        keywordAndCount : String -> Int -> Html msg
+        keywordAndCount k v =
+            li [ class "" ] [ a [ href "#" ]
+                [ span [] [ text k ]
+                , span [ class "badge badge-ghost" ] [ text (String.fromInt v) ]
+                ] ]
+
         suggestions =  
             model.searchSuggestions
                 |> Dict.toList
-                |> List.map (\(k, v) -> li [ class "" ] [ a [ href "#" ] [ text k ] ])
+                |> List.map (\(k, v) -> keywordAndCount k v)
 
         handler = Decode.map2 TargetResultDict
                         (Decode.at ["target", "selectionStart"] Decode.int)
