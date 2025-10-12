@@ -44,6 +44,7 @@ import Html exposing (datalist)
 
 -- STATE MANAGEMENT TYPES
 
+type alias TargetResultDict = {a: Int, b: Int}
 
 type alias PendingCommand =
     Dict String PendingCommandItem
@@ -198,11 +199,11 @@ type alias Model =
         , formSubmitting : Bool
         , page : Page
         , searchQuery : String
-        , searchSuggestions : List Suggestion
+        , searchSuggestions : Suggestion
+        , searchSelection : (Int, Int)
         }
 
-type alias Suggestion =
-    { text : String }
+type alias Suggestion = IndexedDB.KeywordCount
 
 type alias DataUrl =
     String
@@ -270,7 +271,8 @@ init flags url key =
         , activeItem = Nothing
         , page = page
         , searchQuery = ""
-        , searchSuggestions = []
+        , searchSuggestions = Dict.empty
+        , searchSelection = (0, 0)
         }
     , initCmd
     )
@@ -312,6 +314,7 @@ type Msg
     | OnItemFormSubmit (Form.Validated String Item)
     | AddItemImage DataUrl
     | EditItemImage DataUrl
+    | SearchSelection (Int, Int)
     | SearchInput String
 
 
@@ -697,9 +700,10 @@ update msg ( model) =
 
                         IndexedDB.DeleteItemResult ->
                             (  model, indexedDbCmd IndexedDB.listItems )
+                        
+                        IndexedDB.GetPartialKeywordsResult keywordCount ->
+                            ( { model | searchSuggestions = keywordCount }, Cmd.none )
 
-                        IndexedDB.UnknownResult ->
-                            (  { model | receivedData = "Received unknown IndexedDB result." }, Cmd.none )
 
         LinkClicked urlRequest ->
             case urlRequest of
@@ -750,19 +754,25 @@ update msg ( model) =
                     ( { model | activeItem = Just updatedItem, takePictureMsg = Nothing }, Cmd.none )
 
                 Nothing -> (model, Cmd.none)
+
+        SearchSelection (start, end) ->
+            ( { model | searchSelection = (start, end) }, Cmd.none )
         SearchInput query ->
-            let 
-                suggestions =
-                    if String.length query < 3 then
-                        []
+            let
+                queryIsEnough = String.length query >= 1
+
+                searchCmdOrNone =
+                    if queryIsEnough then
+                        indexedDbCmd (IndexedDB.getPartialKeywords query)
                     else
-                        [ Suggestion "faceup"
-                        , Suggestion "fiber"
-                        , Suggestion "remote"
-                        , Suggestion "resin"
-                        ]
+                        Cmd.none
+                suggestionOrCleared =
+                    if queryIsEnough then
+                        model.searchSuggestions
+                    else
+                        Dict.empty
             in
-                ( { model | searchQuery = query, searchSuggestions = suggestions }, Cmd.none )
+            ( { model | searchQuery = query, searchSuggestions = suggestionOrCleared }, searchCmdOrNone )
 
 
 addPendingCommandToModel : Model -> Command.Command -> PendingCommand
@@ -800,7 +810,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ serialData ReceiveData
-        -- , Time.every 500 Tick
+        , Time.every 500 Tick
         , serialStatus
             (\rawList ->
                 ReceiveSerialStatus (decodeSerialStatus rawList)
@@ -1102,12 +1112,28 @@ pageItems ( model) =
                     p [] [ text "Loading..." ]
         suggestions =  
             model.searchSuggestions
-                |> List.map (.text >> (\s -> li [] [ a [ href "#" ] [ text s ] ]))
+                |> Dict.toList
+                |> List.map (\(k, v) -> li [ class "" ] [ a [ href "#" ] [ text k ] ])
+
+        handler = Decode.map2 TargetResultDict
+                        (Decode.at ["target", "selectionStart"] Decode.int)
+                        (Decode.at ["target", "selectionEnd"] Decode.int)
+        handler2 = Decode.andThen (\r ->
+            let
+                _ = "todo"
+                -- _ = Debug.log "SearchInput.a" r.a
+                -- _ = Debug.log "SearchInput.b" r.b
+            in
+                Decode.succeed (SearchSelection (r.a, r.b))
+            )
+            handler
+        eventDecoder = handler2
+
 
         search = 
-            div [ class "dropdown dropdown-open" ]
-                [ input [ list "item-search-list", placeholder "Search items...", class "input ", onInput SearchInput, value model.searchQuery ] []
-                , ul [ class "dropdown-content menu bg-base-100"] suggestions
+            div [ class "dropdown dropdown-open"]
+                [ input [ placeholder "Search items...", class "input ", on "selectionchange" eventDecoder, onInput SearchInput, value model.searchQuery ] []
+                , ul [ class "dropdown-content menu rounded-box bg-base-100", hidden (List.isEmpty suggestions) ] suggestions
                 ]
     in
         div [ class "flex flex-col" ]

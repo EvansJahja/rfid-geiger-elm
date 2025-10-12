@@ -88,6 +88,23 @@ class DB {
         return await this.db.getAll('item');
     }
 
+    async getPartialKeywords(partial: string) : Promise<Record<string, number>> {
+
+        const keyrange = IDBKeyRange.bound(partial, partial + '\uffff');
+        const items = await this.db.getAllFromIndex('item', 'byKeyword', keyrange);
+
+        const uniqueKeywordsAndCount = items.reduce((acc: Record<string, number>, item) => {
+            item.keywords.forEach((keyword) => {
+                if (keyword.startsWith(partial)) {
+                    acc[keyword] = (acc[keyword] || 0) + 1;
+                }
+            });
+            return acc;
+        }, {});
+
+        return uniqueKeywordsAndCount;
+    }
+
     async addItem(item: ItemValue) {
         typia.assert<ItemValue>(item);
         return await this.db.add('item', item);

@@ -36,6 +36,7 @@ commandStringDict =
         , ("putItem", PutItem)
         , ("deleteItem", DeleteItem)
         , ("deleteDB", DeleteDB)
+        , ("getPartialKeywords", GetPartialKeywords)
         ]
 
 type Command = GetItem
@@ -46,6 +47,7 @@ type Command = GetItem
              | PutItem
              | DeleteItem
              | DeleteDB
+             | GetPartialKeywords
              | Unknown
             
 commandFromString : String -> Command
@@ -65,7 +67,7 @@ type IndexedDBResult = GetItemResult (Maybe Item)
                      | AddItemResult
                      | PutItemResult
                      | DeleteItemResult
-                     | UnknownResult
+                     | GetPartialKeywordsResult KeywordCount
 type IndexedDBError = UnknownError
                     | StatusError String
                     | CommandError Command String
@@ -88,35 +90,41 @@ receive (cmd, value) =
             "Error" ->
                 Err <| CommandError (commandFromString baseCmd) (Json.Decode.decodeValue Json.Decode.string value |> Result.withDefault "Unknown error")
             "Result" ->
-                Ok <| case baseCmd of
+                 case baseCmd of
                     "open" ->
-                        OpenResult StatusOpened
+                        Ok (OpenResult StatusOpened)
                     "getItem" ->
                         case Json.Decode.decodeValue Item.decoder value of
                             Ok item ->
-                                GetItemResult (Just item)
+                                Ok (GetItemResult (Just item))
                             Err _ ->
-                                GetItemResult Nothing
+                                Err (CommandError GetItem "Failed to decode item")
                     "listItemKeywords" ->
                         case Json.Decode.decodeValue keywordCountDecoder value of
                             Ok keywords ->
-                                ListItemKeywordsResult keywords
+                                Ok (ListItemKeywordsResult keywords)
                             Err _ ->
-                                ListItemKeywordsResult Dict.empty
+                                Err (CommandError ListItemKeywords "Failed to decode keyword counts")
                     "listItems" ->
                         case Json.Decode.decodeValue (Json.Decode.list Item.decoder) value of
                             Ok items ->
-                                ListItemsResult items
+                                Ok (ListItemsResult items)
                             Err _ ->
-                                ListItemsResult []
+                                Err (CommandError ListItems "Failed to decode item list")
                     "addItem" ->
-                        AddItemResult
+                        Ok AddItemResult
                     "putItem" ->
-                        PutItemResult
+                        Ok PutItemResult
                     "deleteItem" ->
-                        DeleteItemResult
+                        Ok DeleteItemResult
+                    "getPartialKeywords" ->
+                        case Json.Decode.decodeValue keywordCountDecoder value of
+                            Ok keywordCount ->
+                                Ok (GetPartialKeywordsResult keywordCount)
+                            Err _ ->
+                                Err (CommandError GetPartialKeywords "Failed to decode partial keywords")
                     _ ->
-                        UnknownResult
+                        Err UnknownError
             _ ->
                 UnknownError |> Err -- should not happen
 
@@ -160,6 +168,10 @@ open =
 deleteDB : IndexedDbCmdArg
 deleteDB =
     ( "deleteDB", Json.Encode.null )
+
+getPartialKeywords : String -> IndexedDbCmdArg
+getPartialKeywords partial =
+    ( "getPartialKeywords", Json.Encode.string partial )
 
 message : msg -> Cmd msg
 message =
