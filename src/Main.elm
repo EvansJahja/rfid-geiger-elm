@@ -1156,7 +1156,7 @@ pageItems ( model) =
 
 
         search = 
-            div [ class "dropdown dropdown-open"]
+            div [ class "sticky top-5 z-10 ml-5 dropdown dropdown-open"]
                 [ input [ placeholder "Search items...", class "input ", on "selectionchange" eventDecoder, onInput SearchInput, value model.searchQuery ] []
                 , ul [ class "dropdown-content menu rounded-box bg-base-100", hidden (List.isEmpty suggestions) ] suggestions
                 ]
