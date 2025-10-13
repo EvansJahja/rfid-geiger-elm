@@ -2,6 +2,7 @@ port module Main exposing (..)
 
 import Browser
 import Browser.Navigation as Nav
+import Browser.Dom exposing (focus)
 import BytesHelper
 import Device exposing (Device, encodeDevice)
 import Dict exposing (Dict)
@@ -284,7 +285,8 @@ init flags url key =
 
 
 type Msg
-    = ReceiveData (List Int)
+    = NoOp
+    | ReceiveData (List Int)
     | ReceivePacket Packet
     | ReceiveResponse Command.CommandWithArgs
     | ReceiveSerialStatus (Maybe SerialStatus)
@@ -317,6 +319,7 @@ type Msg
     | EditItemImage DataUrl
     | SearchSelection (Int, Int)
     | SearchInput String
+    | SearchKeywordClicked String
 
 
 type ItemFormField
@@ -456,6 +459,7 @@ port indexedDbSub : (( String, Decode.Value ) -> msg) -> Sub msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg ( model) =
     case msg of
+        NoOp -> ( model, Cmd.none )
         ReceiveData byteList ->
             let
                 appendedBuffer =
@@ -782,6 +786,10 @@ update msg ( model) =
                         indexedDbCmd (IndexedDB.getPartialKeywords nearestKeyword)
                     else
                         Cmd.none
+
+                nearestKeywordInSuggestion =
+                    Dict.member nearestKeyword model.searchSuggestions
+
                 nearestKeywordSuggestions =
                     if nearestKeywordIsEnough then
                         model.searchSuggestions
@@ -789,6 +797,31 @@ update msg ( model) =
                         Dict.empty
             in
             ( { model | searchQuery = query, searchSuggestions = nearestKeywordSuggestions }, searchCmdOrNone )
+        SearchKeywordClicked keyword ->
+            let
+                ( start, _ ) =
+                    model.searchSelection
+                -- Find the position of the last space before start
+                lastSpaceIndex =
+                    String.slice 0 start model.searchQuery
+                        |> String.reverse
+                        |> String.indexes " "
+                        |> List.head
+                        |> Maybe.map (\i -> String.length (String.slice 0 start model.searchQuery) - i - 1 )
+                        |> Maybe.withDefault (-1)
+                -- Replace the word at that position with the clicked keyword
+                newQuery =
+                    String.slice 0 (lastSpaceIndex + 1) model.searchQuery
+                        ++ keyword
+                        ++ " "
+                        ++ String.slice start (String.length model.searchQuery) model.searchQuery
+                -- set suggestions to empty
+
+                focusCmd =
+                    focus "search-input" |> Task.attempt (\_ -> NoOp)
+            in 
+            ( { model | searchQuery = newQuery, searchSuggestions = Dict.empty }, focusCmd )
+
 
 
 addPendingCommandToModel : Model -> Command.Command -> PendingCommand
@@ -1128,9 +1161,9 @@ pageItems ( model) =
                     p [] [ text "Loading..." ]
         
 
-        keywordAndCount : String -> Int -> Html msg
+        keywordAndCount : String -> Int -> Html Msg
         keywordAndCount k v =
-            li [ class "" ] [ a [ href "#" ]
+            li [ class "", onClick (SearchKeywordClicked k) ] [ a [ href "#" ]
                 [ span [] [ text k ]
                 , span [ class "badge badge-ghost" ] [ text (String.fromInt v) ]
                 ] ]
@@ -1157,7 +1190,7 @@ pageItems ( model) =
 
         search = 
             div [ class "sticky top-5 z-10 ml-5 dropdown dropdown-open"]
-                [ input [ placeholder "Search items...", class "input ", on "selectionchange" eventDecoder, onInput SearchInput, value model.searchQuery ] []
+                [ input [ type_ "search", autocomplete False, id "search-input", placeholder "Search items...", class "input ", on "selectionchange" eventDecoder, onInput SearchInput, value model.searchQuery ] []
                 , ul [ class "dropdown-content menu rounded-box bg-base-100", hidden (List.isEmpty suggestions) ] suggestions
                 ]
     in
