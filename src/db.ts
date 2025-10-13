@@ -84,8 +84,22 @@ class DB {
         return uniqueKeywordsAndCount;
     }
 
-    async listItems() : Promise<ItemValue[]> {
-        return await this.db.getAll('item');
+    async listItems(keywords: Array<string>) : Promise<ItemValue[]> {
+        console.log("Listing items with keywords:", keywords);
+        if (keywords.length === 0) {
+            return await this.db.getAll('item');
+        }
+
+        const tx = await this.db.transaction('item', 'readonly');
+        const store = tx.objectStore('item');
+        const index = store.index('byKeyword');
+        const firstKeyrange = IDBKeyRange.bound(keywords[0], keywords[0] + '\uffff');
+        const prefilteredItems = await index.getAll(firstKeyrange);
+        const filteredItems = prefilteredItems.filter(item => {
+            return keywords.every(keyword => item.keywords.includes(keyword));
+        });
+
+        return filteredItems;
     }
 
     async getPartialKeywords(partial: string) : Promise<Record<string, number>> {

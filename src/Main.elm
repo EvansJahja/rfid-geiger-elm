@@ -41,6 +41,8 @@ import Html exposing (figure)
 import Html exposing (h2)
 import Html exposing (datalist)
 import Tuple exposing (first)
+import Url.Parser exposing (query)
+import Form.Field exposing (search)
 
 
 
@@ -156,7 +158,7 @@ pageSpecificCmds page =
             [ indexedDbCmd IndexedDB.listItemKeywords ]
 
         PageItems ->
-            [ indexedDbCmd IndexedDB.listItems ]
+            [ indexedDbCmd (IndexedDB.listItems []) ]
 
         PageItem id ->
             [ indexedDbCmd (IndexedDB.getItem id) ]
@@ -296,7 +298,6 @@ type Msg
     | UpdateWorkingParameters WorkingParameters
     | SendCommand Packet
     | IncrementCounter
-    | DebugCmd String
     | DebugToggle Bool
     | CreateMockData
     | DeviceSelected (Maybe Device)
@@ -320,6 +321,7 @@ type Msg
     | SearchSelection (Int, Int)
     | SearchInput String
     | SearchKeywordClicked String
+    | SearchKeywordCompleted
 
 
 type ItemFormField
@@ -606,9 +608,6 @@ update msg ( model) =
         Connect device ->
             (  model, Cmd.batch [ deviceConnect (encodeDevice device), registerListener () ] )
 
-        DebugCmd debugMsg ->
-            (  model, debugPort debugMsg )
-
         DebugToggle isChecked ->
             (  { model | showDebug = isChecked }, Cmd.none )
 
@@ -698,14 +697,14 @@ update msg ( model) =
                             (  { model | items = Just items }, Cmd.none )
 
                         IndexedDB.AddItemResult ->
-                            (  model, indexedDbCmd IndexedDB.listItems )
+                            (  model, indexedDbCmd (IndexedDB.listItems []) )
 
                         IndexedDB.PutItemResult ->
-                            (  { model | formSubmitting = False }, indexedDbCmd IndexedDB.listItems )
+                            (  { model | formSubmitting = False }, indexedDbCmd (IndexedDB.listItems []) )
 
                         IndexedDB.DeleteItemResult ->
-                            (  model, indexedDbCmd IndexedDB.listItems )
-                        
+                            (  model, indexedDbCmd (IndexedDB.listItems []) )
+
                         IndexedDB.GetPartialKeywordsResult keywordCount ->
                             ( { model | searchSuggestions = keywordCount }, Cmd.none )
 
@@ -779,7 +778,7 @@ update msg ( model) =
                     in
                         String.slice (lastSpaceIndex + 1) start query
 
-                nearestKeywordIsEnough = String.length nearestKeyword >= 2
+                nearestKeywordIsEnough = String.length nearestKeyword >= 1
 
                 searchCmdOrNone =
                     if nearestKeywordIsEnough then
@@ -795,8 +794,23 @@ update msg ( model) =
                         model.searchSuggestions
                     else
                         Dict.empty
+
+                hadSuggestion =
+                    (not <| Dict.isEmpty model.searchSuggestions )
+                    && Dict.isEmpty nearestKeywordSuggestions
+                
+                cmds = if hadSuggestion then
+                        Cmd.batch
+                            [ focus "search-input" |> Task.attempt (\_ -> NoOp)
+                            , message SearchKeywordCompleted
+                            ]
+                       else Cmd.batch
+                            [ searchCmdOrNone 
+                            , message SearchKeywordCompleted
+                            ]
+
             in
-            ( { model | searchQuery = query, searchSuggestions = nearestKeywordSuggestions }, searchCmdOrNone )
+            ( { model | searchQuery = query, searchSuggestions = nearestKeywordSuggestions }, cmds )
         SearchKeywordClicked keyword ->
             let
                 ( start, _ ) =
@@ -819,8 +833,21 @@ update msg ( model) =
 
                 focusCmd =
                     focus "search-input" |> Task.attempt (\_ -> NoOp)
+                cmds = Cmd.batch
+                        [ focusCmd
+                        , message SearchKeywordCompleted
+                        ]
             in 
-            ( { model | searchQuery = newQuery, searchSuggestions = Dict.empty }, focusCmd )
+            ( { model | searchQuery = newQuery, searchSuggestions = Dict.empty }, cmds )
+        SearchKeywordCompleted ->
+            let
+                keywordsAsList = model.searchQuery
+                    |> String.split " "
+                    |> List.filter (\s -> String.length s > 0)
+                queryCmd =
+                    indexedDbCmd (IndexedDB.listItems keywordsAsList)
+            in
+                ( model, queryCmd )
 
 
 
@@ -859,7 +886,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ serialData ReceiveData
-        , Time.every 500 Tick
+        -- , Time.every 500 Tick
         , serialStatus
             (\rawList ->
                 ReceiveSerialStatus (decodeSerialStatus rawList)
@@ -1163,7 +1190,7 @@ pageItems ( model) =
 
         keywordAndCount : String -> Int -> Html Msg
         keywordAndCount k v =
-            li [ class "", onClick (SearchKeywordClicked k) ] [ a [ href "#" ]
+            li [ class "", onClick (SearchKeywordClicked k) ] [ span [  ]
                 [ span [] [ text k ]
                 , span [ class "badge badge-ghost" ] [ text (String.fromInt v) ]
                 ] ]

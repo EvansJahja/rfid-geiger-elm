@@ -149,9 +149,9 @@ listItemKeywords : IndexedDbCmdArg
 listItemKeywords =
     ( "listItemKeywords", Json.Encode.null )
 
-listItems : IndexedDbCmdArg
-listItems =
-    ( "listItems", Json.Encode.null )
+listItems : (List String) -> IndexedDbCmdArg
+listItems keywords =
+    ( "listItems", Json.Encode.list  Json.Encode.string keywords )
 
 addItem : Item -> IndexedDbCmdArg
 addItem item =

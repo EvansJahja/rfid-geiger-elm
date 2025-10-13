@@ -11,13 +11,6 @@ const app = Elm.Main.init({ node: document.getElementById('elm-app'), flags: { p
 
 // Module-level variables to maintain serial port state
 
-app.ports.debugPort.subscribe(function(message) {
-    switch(message) {
-        default:
-            console.log("Unknown debug message from Elm:", message);
-    }
-});
-
 app.ports.requestDeviceList.subscribe(function() {
     console.log("Requesting Bluetooth device list...");
     CapacitorBluetoothSerial.checkAndRequestBluetoothPermission().then(() => {
