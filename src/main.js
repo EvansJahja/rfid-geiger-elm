@@ -4,6 +4,7 @@ import { CapacitorBluetoothSerial } from 'capacitor-bluetooth-serial';
 import { Camera } from '@capacitor/camera';
 import { Elm } from './Main.elm';
 import { DB, open } from './db.ts';
+import '@curtissimo/elm-native-modal-dialog/js/elm-dialog-proxy.js';
 
 const platform = Capacitor.getPlatform();
 const app = Elm.Main.init({ node: document.getElementById('elm-app'), flags: { platform } });

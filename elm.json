@@ -8,6 +8,7 @@
         "direct": {
             "arturopala/elm-monocle": "2.2.0",
             "avh4/elm-fifo": "1.0.4",
+            "curtissimo/elm-native-modal-dialog": "3.0.1",
             "dillonkearns/elm-form": "3.0.1",
             "elm/browser": "1.0.2",
             "elm/bytes": "1.0.8",

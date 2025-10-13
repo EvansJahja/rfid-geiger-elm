@@ -26,6 +26,7 @@
   "dependencies": {
     "@capacitor/app": "^7.1.0",
     "@capacitor/camera": "^7.0.2",
+    "@curtissimo/elm-native-modal-dialog": "^3.0.1",
     "capacitor-bluetooth-serial": "file:../capacitor-bluetooth-serial",
     "elm-webpack-loader": "^8.0.0",
     "idb": "^8.0.3",
