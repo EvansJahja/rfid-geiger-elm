@@ -134,7 +134,7 @@ type alias Inventory =
 routeParser : Parser (Page -> a) a
 routeParser =
     oneOf
-        [ UrlParser.map PageCategories (s "categories")
+        [ UrlParser.map PageScan (s "scan")
         , UrlParser.map PageItems (s "items")
         , UrlParser.map PageItem (s "item" </> string)
         , UrlParser.map PageLocation (s "location")
@@ -143,7 +143,7 @@ routeParser =
         ]
 
 type Page
-    = PageCategories
+    = PageScan
     | PageItems
     | PageItem String
     | PageAddItems
@@ -154,8 +154,8 @@ type Page
 pageSpecificCmds : Page -> List (Cmd Msg)
 pageSpecificCmds page =
     case page of
-        PageCategories ->
-            [ indexedDbCmd IndexedDB.listItemKeywords ]
+        PageScan ->
+            [ ]
 
         PageItems ->
             [ indexedDbCmd (IndexedDB.listItems []) ]
@@ -294,6 +294,7 @@ type Msg
     | ReceiveSerialStatus (Maybe SerialStatus)
     | ReceiveDeviceList (List Device)
     | RequestDeviceList
+    | ScannedEPC EPC
     | SetEditWorkingParameters (Maybe WorkingParameters)
     | UpdateWorkingParameters WorkingParameters
     | SendCommand Packet
@@ -523,38 +524,8 @@ update msg ( model) =
                     in
                     (  { model | workingParameters = maybeWorkingParams, receivedData = "Working parameters updated." }, Cmd.none )
 
-                Command.CommandWithArgs ( Command.HostComputerCardReading, args ) ->
-                    let
-                        epc : EPC
-                        epc =
-                            args
-
-                        -- itemForm =
-                        --     let
-                        --         modelItemForm =
-                        --             model.itemForm
-                        --     in
-                        --     if model.page == PageAddItems || model.showDebug then
-                        --         { modelItemForm | epc = EPC.epcStringPrism.reverseGet epc }
-
-                        --     else
-                        --         modelItemForm
-
-                        -- we may be filtering this epc
-                        filteredEpc =
-                            Set.isEmpty model.epcFilter || Set.member epc model.epcFilter
-
-                        inventoryItem =
-                            { epc = epc, lastSeen = model.time }
-
-                        newInventory =
-                            if filteredEpc then
-                                Dict.insert epc inventoryItem model.inventory
-
-                            else
-                                model.inventory
-                    in
-                    (  { model | inventory = newInventory, latestEPC = Just epc }, Cmd.none )
+                Command.CommandWithArgs ( Command.HostComputerCardReading, epc ) ->
+                    ( model, message (ScannedEPC epc) )
 
                 Command.CommandWithArgs ( unk, args ) ->
                     (  { model | receivedData = "Received unknown response: " }, Cmd.none )
@@ -848,6 +819,25 @@ update msg ( model) =
                     indexedDbCmd (IndexedDB.listItems keywordsAsList)
             in
                 ( model, queryCmd )
+        ScannedEPC epc ->
+            let
+                filteredEpc =
+                    Set.isEmpty model.epcFilter || Set.member epc model.epcFilter
+
+                inventoryItem =
+                    { epc = epc, lastSeen = model.time }
+
+                newInventory =
+                    if filteredEpc then
+                        Dict.insert epc inventoryItem model.inventory
+
+                    else
+                        model.inventory
+            in
+                (  { model | inventory = newInventory, latestEPC = Just epc }, Cmd.none )
+
+
+
 
 
 
@@ -886,7 +876,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ serialData ReceiveData
-        -- , Time.every 500 Tick
+        , Time.every 500 Tick
         , serialStatus
             (\rawList ->
                 ReceiveSerialStatus (decodeSerialStatus rawList)
@@ -947,18 +937,16 @@ viewNavbar ( model) =
             else
                 ""
 
-        link : String -> Page -> String -> List (Cmd Msg) -> Html Msg
-        link href page label cmds =
+        link : String -> Page -> String -> Html Msg
+        link href page label =
             Html.a [ Attrs.attribute "role" "tab", Attrs.href href, class (isActive page ++ "text-xs tab ") ] [ text label ]
     in
     div [ Attrs.attribute "role" "tablist", class " tabs tabs-border shadow-sm justify-center pb-8" ]
-        [ link "/categories" PageCategories "Categories" [ message ListItemKeywords ]
-        , link "/items" PageItems "Items" []
-        , link "/add-item" PageAddItems "Add Item" []
-        , link "/location" PageLocation "Location" []
-        , link "/settings" PageSettings "Settings" []
-        -- , Html.a [ Attrs.attribute "role" "tab", class (isActive PageTODO ++ "text-xs tab") ] [ text "Ownership" ]
-        -- , Html.a [ Attrs.attribute "role" "tab", class (isActive PageTODO ++ "text-xs tab") ] [ text "All" ]
+        [ link "/scan" PageScan "Scan"
+        , link "/items" PageItems "Items"
+        , link "/add-item" PageAddItems "Add Item"
+        , link "/location" PageLocation "Location"
+        , link "/settings" PageSettings "Settings"
         ]
 
 
@@ -1038,8 +1026,8 @@ view : Model -> Html Msg
 view ( model) =
     div [ class "min-h-screen bg-base-200 text-base-content" ]
         [ case model.page of
-            PageCategories ->
-                pageCategories ( model)
+            PageScan ->
+                pageScan ( model)
 
             PageLocation ->
                 pageLocation ( model)
@@ -1057,32 +1045,81 @@ view ( model) =
         ]
 
 
-pageCategories : Model -> Html Msg
-pageCategories ( model) =
+pageScan : Model -> Html Msg
+pageScan  model =
     let
-        maybeKeywordCounts =
-            model.itemKeywordCounts
+        -- EPC Filter section (collapsible)
+        epcFilterSection =
+            let
+                epcToLi epc =
+                    Html.li [ class "flex justify-between items-center py-2 px-3 bg-base-200 rounded mb-2" ]
+                        [ span [ class "font-mono text-sm" ] [ text (EPC.epcStringPrism.reverseGet epc) ]
+                        , button [ class "btn btn-sm btn-ghost text-error", onClick (EPCFilter (Remove epc)) ] [ text "Remove" ]
+                        ]
 
-        panelContents =
-            case maybeKeywordCounts of
-                Just keywordCounts ->
-                    if Dict.isEmpty keywordCounts then
-                        p [] [ text "No keywords found." ]
-
+                filterCount = Set.size model.epcFilter
+                filterSummary = 
+                    if filterCount == 0 then
+                        "No EPC filters active"
                     else
-                        viewKeywordCountList ( model) keywordCounts
+                        String.fromInt filterCount ++ " EPC filter" ++ (if filterCount == 1 then "" else "s") ++ " active"
+            in
+            Html.details [ class "collapse collapse-arrow bg-base-100 mb-4" ]
+                [ Html.summary [ class "collapse-title text-sm font-medium" ] 
+                    [ text ("EPC Filters (" ++ filterSummary ++ ")") ]
+                , div [ class "collapse-content" ]
+                    [ if Set.isEmpty model.epcFilter then
+                        p [ class "text-base-content/60 italic py-2" ] [ text "No EPC filters set. Items page can be used to add filters." ]
+                      else
+                        ul [ class "space-y-1" ]
+                            (model.epcFilter
+                                |> Set.toList
+                                |> List.map epcToLi
+                            )
+                    ]
+                ]
 
-                Nothing ->
-                    p [] [ text "Loading..." ]
+        -- Inventory section (main focus)  
+        inventorySection =
+            let
+                itemToLi item =
+                    Html.li [ class "flex justify-between items-center py-3 px-4 bg-base-100 rounded-lg shadow-sm mb-2" ]
+                        [ div [ class "flex flex-col" ]
+                            [ span [ class "font-mono text-sm font-semibold" ] [ text (EPC.epcStringPrism.reverseGet item.epc) ]
+                            , span [ class "text-xs text-base-content/60" ] [ text ("Last seen: " ++ humanTimeDifference item.lastSeen model.time ++ " ago") ]
+                            ]
+                        , button [ class "btn btn-sm btn-primary", onClick (EPCFilter (Add item.epc)) ] [ text "Add to Filter" ]
+                        ]
+
+                inventoryList =
+                    if Dict.isEmpty model.inventory then
+                        div [ class "text-center py-8" ]
+                            [ div [ class "text-4xl mb-2" ] [ text "📡" ]
+                            , p [ class "text-base-content/60" ] [ text "No tags scanned yet" ]
+                            , p [ class "text-sm text-base-content/40" ] [ text "Start scanning to see inventory here" ]
+                            ]
+                    else
+                        ul [ class "space-y-2" ]
+                            (Dict.values model.inventory
+                                |> List.sortBy (.lastSeen >> Time.posixToMillis >> negate) -- Sort by most recent first
+                                |> List.map itemToLi
+                            )
+            in
+            viewPanel "Live Inventory"
+                [ div [ class "flex justify-between items-center mb-4" ]
+                    [ h2 [ class "text-lg font-semibold" ] 
+                        [ text ("Scanned Tags: " ++ String.fromInt (Dict.size model.inventory)) ]
+                    , button [ class "btn btn-sm btn-outline btn-error", onClick ClearInventory, disabled (Dict.isEmpty model.inventory) ] 
+                        [ text "Clear All" ]
+                    ]
+                , inventoryList
+                ]
     in
-    div [ class "flex flex-col" ]
+    div [ class "flex flex-col p-4 gap-4" ]
         [ viewHeading
-        , viewNavbar ( model)
-        , viewPanel ""
-            [ button [ class "btn" ] [ text "(TODO) Search" ]
-            , button [ class "btn", onClick ListItemKeywords ] [ text "Get keywords" ]
-            , panelContents
-            ]
+        , viewNavbar model
+        , epcFilterSection
+        , inventorySection
         ]
 
 
@@ -1522,6 +1559,7 @@ viewPanelFilter ( model) =
                 [ span []
                     [ text ("EPC: " ++ EPC.epcStringPrism.reverseGet epc)
                     , button [ class "btn", onClick (EPCFilter (Remove epc)) ] [ text "Remove From Filter" ]
+                    , button [ class "btn", onClick ( (ScannedEPC epc)) ] [ text "Pretend scan" ]
                     ]
                 ]
     in
