@@ -107,6 +107,17 @@ app.ports.indexedDbCmd.subscribe(async function([cmd, args]) {
 });
 
 
+let audio = {};
+app.ports.playSound.subscribe(function(src) {
+    if (!audio[src]) {
+        audio[src] = new Audio(src);
+    }
+    audio[src].currentTime = 0;
+    audio[src].play();
+
+})
+
+
 // Capacitor App
 App.addListener('backButton', ({ canGoBack }) => {
     if (canGoBack) {

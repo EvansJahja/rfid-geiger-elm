@@ -454,6 +454,8 @@ port indexedDbCmd : ( String, Encode.Value ) -> Cmd msg
 
 port indexedDbSub : (( String, Decode.Value ) -> msg) -> Sub msg
 
+port playSound : (String) -> Cmd msg
+
 
 
 -- UPDATE
@@ -834,7 +836,7 @@ update msg ( model) =
                     else
                         model.inventory
             in
-                (  { model | inventory = newInventory, latestEPC = Just epc }, Cmd.none )
+                (  { model | inventory = newInventory, latestEPC = Just epc }, playSound "/ping.wav" )
 
 
 
@@ -1118,6 +1120,7 @@ pageScan  model =
     div [ class "flex flex-col p-4 gap-4" ]
         [ viewHeading
         , viewNavbar model
+        , button [class "btn", onClick (ReceivePacket (Response (Command.CommandWithArgs (Command.HostComputerCardReading, [ 0xE2, 0x00, 0x47, 0x18, 0xB8, 0x30, 0x64, 0x26, 0x7B, 0xC2, 0x01, 0x0C ])))) ] [ text "Simulate Scan" ]
         , epcFilterSection
         , inventorySection
         ]
