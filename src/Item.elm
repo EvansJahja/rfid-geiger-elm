@@ -13,8 +13,6 @@ import Html.Events exposing (onSubmit)
 import Html exposing (form)
 import Html.Attributes exposing (type_)
 import Html.Attributes exposing (disabled)
-import Curtissimo.NativeModalDialog as Dialog
-import Html.Attributes exposing (method)
 
 type alias Item =
     { title: String
@@ -90,11 +88,6 @@ addItemForm messages hidden errors submitting =
                             else
                                 div [ class "error" ]
                                     (List.map (\e -> p [ class "text-error" ] [ text e ]) listOfErrors)
-                        
-
-                        dialogOptions = Dialog.init {id= "test-dialog"}
-                                        |> Dialog.withClassList [("modal", True)]
-                                        |> Dialog.showDialog False
                         submitBtnContent = 
                             if submitting then
                                 [ span [class "loading loading-spinner"] []
@@ -115,14 +108,6 @@ addItemForm messages hidden errors submitting =
 
                         , button [ class "btn btn-primary", disabled submitting] submitBtnContent
                         , submitErrorView errors
-                        , ( Dialog.view dialogOptions
-                            [ div [class "modal-box"]
-                                [ p [] [ text "This is a test dialog. It can be used for confirmations or alerts." ] ]
-                            , Html.form [ method "dialog", class "modal-backdrop" ]
-                                [ button [  ] [ text "Close" ] 
-                                ]
-                            ]
-                            )
                         ]
                     ]
             }
